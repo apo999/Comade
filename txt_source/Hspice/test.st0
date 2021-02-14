@@ -1,0 +1,48 @@
+***** HSPICE -- F-2011.09 32-BIT (Sep  5 2011) winnt ******
+ Input File: test.sp
+ lic:
+ lic: FLEXlm: v10.8
+ lic: USER:   86184                HOSTNAME: PC2line
+ lic: HOSTID: "e86a64c8f38a 00ff6e5bbc8f 485f9955e58d 4a5f9955e58d ca5f9955e58d"
+ lic: Using FLEXlm license file:
+ lic: D:\HSPICE\license1.dat
+ lic: Checkout 1 hspice
+ lic: License/Maintenance for hspice will expire on 31-dec-2030/2030.12
+ lic: NODE LOCKED license on hostid "e86a64c8f38a 00ff6e5bbc8f 485f9955e58d 4a5f
+ lic:
+ init: begin read circuit files,  cpu clock=  8.04E-01
+       option search   = D:\HSPICE\hspice\PARTS\behave\
+       option search   = D:\HSPICE\hspice\PARTS\behave\
+       option search   = D:\HSPICE\hspice\PARTS\AD\
+       option search   = D:\HSPICE\hspice\PARTS\XILINX\
+       option search   = D:\HSPICE\hspice\PARTS\TLINE\
+       option search   = D:\HSPICE\hspice\PARTS\TI\
+       option search   = D:\HSPICE\hspice\PARTS\SIGNET\
+       option search   = D:\HSPICE\hspice\PARTS\PCI\
+       option search   = D:\HSPICE\hspice\PARTS\LIN_TECH\
+       option search   = D:\HSPICE\hspice\PARTS\FET\
+       option search   = D:\HSPICE\hspice\PARTS\DIO\
+       option search   = D:\HSPICE\hspice\PARTS\COMLINE\
+       option search   = D:\HSPICE\hspice\PARTS\BURR_BRN\
+       option search   = D:\HSPICE\hspice\PARTS\BJT\
+       option search   = D:\HSPICE\hspice\PARTS\behave\
+       option search   = D:\HSPICE\hspice\PARTS\AD\
+       option post     =     2.00
+       option runlvl
+       option post
+       option accura
+       option probe
+ init: end read circuit files,  cpu clock=  8.61E-01 memory=    150 kb
+ init: begin check errors,  cpu clock=  8.61E-01
+ init: end check errors,  cpu clock=  8.72E-01 memory=    152 kb
+ init: begin setup matrix, pivot=     0 cpu clock=  8.72E-01
+       establish matrix -- done,  cpu clock=  8.80E-01 memory=    154 kb
+       re-order matrix -- done,  cpu clock=  8.85E-01 memory=    155 kb
+ init: end setup matrix,  cpu clock=  8.88E-01 memory=    167 kb
+ output: test.sw0
+ sweep: dc dc0    begin, #sweeps=  81 cpu clock=  8.96E-01
+ sweep: dc dc0    end,  cpu clock=  9.00E-01 memory=    167 kb
+ dcop: begin dcop,  cpu clock=  9.03E-01
+ dcop: end dcop,  cpu clock=  9.08E-01 memory=    167 kb  tot_iter=      22
+>info:         ***** hspice job concluded
+ lic: Release hspice token(s)
