@@ -17,7 +17,7 @@ checkin = requests.post(url1,headers={
     'path': '/api/user/checkin',
     'scheme': 'https',
     'accept': 'application/json, text/plain, */*',
-    'accept-encoding': 'gzip, deflate, br',
+    'accept-encoding': 'gzip, deflate',
     'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
     'content-length': '26',
     'content-type':'application/json;charset=UTF-8',
@@ -28,10 +28,9 @@ checkin = requests.post(url1,headers={
     'sec-fetch-mode': 'cors',
     'sec-fetch-site': 'same-origin',
     'user-agent': user1},data=json.dumps({'token': "glados_network"}))
-#state = requests.get(url2,headers={'accept':accept,'referer': referer,'user-agent':user2,'cookie': cookie})
-print(checkin.content.json)
-#print(re.findall(r"\"message\":\"[^\"]*\"",checkin.text))
-#print(re.findall(r"\"leftDays\":\"[^\"]*\"",state.text))
-#checkdetail=re.findall(":checkin:[\d-]*",checkin.text)
-#for i in checkdetail:
-#    print(i[1:])
+state = requests.get(url2,headers={'accept':accept,'referer': referer,'user-agent':user2,'cookie': cookie})
+print(re.findall(r"\"message\":\"[^\"]*\"",checkin.text))
+print(re.findall(r"\"leftDays\":\"[^\"]*\"",state.text))
+checkdetail=re.findall(":checkin:[\d-]*",checkin.text)
+for i in checkdetail:
+    print(i[1:])
