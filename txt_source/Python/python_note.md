@@ -663,63 +663,6 @@
         ex:cursor.executemany("insert into books(name,category,price,publish_time)\ 
             values(%s,%s,%s,%s)",data)
 
-### ** 模块专项
-
-#### **.1 sys
-
-    sys是Python自带模块,该模块提供了一系列有关Python运行环境的变量和参数
-    常见用法与含义
-        sys.argv        该方法用于获取当前正在执行的命令行参数的参数列表
-        sys.path        该方法用于获取指定模块路径的字符串集合
-        sys.exit()      该方法用于退出程序,当参数非0时,会引发一个SystemExit异常,从而可以在主程序中捕获该异常
-        sys.platform    该方法用于获取当前系统平台
-        sys.modules     该方法是用于加载模块的字典,每当程序员导入新的模块,sys.modules将自动记录该模块.当相同模块第二次导入时Python将从该字典中进行查询,从而加快程序的运行速度
-        sys.getdefaultencoding()    该方法用于获取当前系统编码方式
-
-#### **.2 time
-
-    该模块提供了用于处理时间的各种方法
-    time.time()自1970年来时间戳,9组数字元组处理时间
-    time.localtime()处理时间戳
-    time.sleep(interval)程序挂起interval秒
-    time.asctime()将localtime结果转换为可读格式
-    time.strftime()将localtime结果转换为格式化日期
-        %y 两位数的年份表示（00-99）
-        %Y 四位数的年份表示（000-9999）
-        %m 月份（01-12）
-        %d 月内中的一天（0-31）
-        %H 24小时制小时数（0-23）
-        %I 12小时制小时数（01-12）
-        %M 分钟数（00-59）
-        %S 秒（00-59）
-        %a 本地简化星期名称
-        %A 本地完整星期名称
-        %b 本地简化的月份名称
-        %B 本地完整的月份名称
-        %c 本地相应的日期表示和时间表示
-        %j 年内的一天（001-366）
-        %p 本地A.M.或P.M.的等价符
-        %U 一年中的星期数（00-53）星期天为星期的开始
-        %w 星期（0-6），星期天为星期的开始
-        %W 一年中的星期数（00-53）星期一为星期的开始
-        %x 本地相应的日期表示
-        %X 本地相应的时间表示
-        %Z 当前时区的名称
-        %% %号本身
-
-#### **.3 calendar
-
-    calendar.month(year,month)获取某一月日历
-
-#### **.4 turtle
-
-#### **.5
-
-    import pkg_resources, os, time
-    for package in pkg_resources.working_set:
-        print("%s: %s" % (package, time.ctime(os.path.getctime(package.location))))
-    查看安装包时间
-
 ## 15-21 高级应用
 
 ### 15 GUI界面编程
@@ -1687,6 +1630,85 @@
 #### 22.1.1 系统功能结构
 
     pass
+
+## Not from book Python:from indoor to master
+
+### 1 模块专项
+
+#### 1.1 sys
+
+    sys是Python自带模块,该模块提供了一系列有关Python运行环境的变量和参数
+    常见用法与含义
+        sys.argv        该方法用于获取当前正在执行的命令行参数的参数列表
+        sys.path        该方法用于获取指定模块路径的字符串集合
+        sys.exit()      该方法用于退出程序,当参数非0时,会引发一个SystemExit异常,从而可以在主程序中捕获该异常
+        sys.platform    该方法用于获取当前系统平台
+        sys.modules     该方法是用于加载模块的字典,每当程序员导入新的模块,sys.modules将自动记录该模块.当相同模块第二次导入时Python将从该字典中进行查询,从而加快程序的运行速度
+        sys.getdefaultencoding()    该方法用于获取当前系统编码方式
+
+#### 1.2 time
+
+    该模块提供了用于处理时间的各种方法
+    time.time()自1970年来时间戳,9组数字元组处理时间
+    time.localtime()处理时间戳
+    time.sleep(interval)程序挂起interval秒
+    time.asctime()将localtime结果转换为可读格式
+    time.strftime()将localtime结果转换为格式化日期
+        %y 两位数的年份表示（00-99）
+        %Y 四位数的年份表示（000-9999）
+        %m 月份（01-12）
+        %d 月内中的一天（0-31）
+        %H 24小时制小时数（0-23）
+        %I 12小时制小时数（01-12）
+        %M 分钟数（00-59）
+        %S 秒（00-59）
+        %a 本地简化星期名称
+        %A 本地完整星期名称
+        %b 本地简化的月份名称
+        %B 本地完整的月份名称
+        %c 本地相应的日期表示和时间表示
+        %j 年内的一天（001-366）
+        %p 本地A.M.或P.M.的等价符
+        %U 一年中的星期数（00-53）星期天为星期的开始
+        %w 星期（0-6），星期天为星期的开始
+        %W 一年中的星期数（00-53）星期一为星期的开始
+        %x 本地相应的日期表示
+        %X 本地相应的时间表示
+        %Z 当前时区的名称
+        %% %号本身
+
+#### 1.3 calendar
+
+    calendar.month(year,month)获取某一月日历
+
+#### 1.4 turtle
+
+#### 1.5
+
+    import pkg_resources, os, time
+    for package in pkg_resources.working_set:
+        print("%s: %s" % (package, time.ctime(os.path.getctime(package.location))))
+    查看安装包时间
+
+### 2 Python Cookbook
+
+    将序列(或可迭代对象)分解为单独的变量，可以用赋值的方式，但变量的总数和结构要与序列相吻合，可以选一个用不到的变量名丢弃某些特定的值
+
+    从某个可迭代对象中分解出N个元素，如果这个可迭代对象的长度可能超过N，会导致出现“分解的值过多”的异常
+    对于多个值，用*修饰的变量可以将对应的变量变为新的列表
+        *式的语法在迭代一个边长的元组序列时尤其有用
+        同样可以用来丢弃多个特定的值
+        一个赋值式只能有一个*式
+
+    递归不是Python的强项，因为其内在的递归限制
+
+    collection.deque能够保存有限的历史记录
+        q=deque(maxlen=n)保存固定长度的队列，默认不限制长度
+        q.append(elem),队列右侧添加，q.appendleft(elem)队列左侧添加
+        q.pop()、q.popleft()队列右侧、左侧弹出
+        复杂度为O(1)，而列表为O(N)
+    
+    yield与return一样，都会返回值，但return意味着程序段的结束，而yield则只是交出CPU的使用权，并未结束程序段，send()和next()会继续中断的地方
 
 ## 彩蛋
 
