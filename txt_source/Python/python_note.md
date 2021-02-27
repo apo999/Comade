@@ -1727,6 +1727,7 @@
     同样是利用heapq heappush(queue,{-priority,elem1,...})，将priority作为堆排序主参考，取负数是因为heappush从小到大排序
     再用heappop弹出优先级最高的元素
     这样是稳定的，即优先级相同的先进先出
+    
 
 ## 彩蛋
 
