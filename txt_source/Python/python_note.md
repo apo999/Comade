@@ -1860,7 +1860,7 @@
         sub = Subscriber('jonesy@example.com','2012-10-19')
         sub.addr    sub.joined
     尽管namedtuple的实例看起来就像一个普通的类实例，但它的实例与普通的元组是可互换的，而且支持所有普通元组所支持的操作，例如索引和分解
-    
+
 
 ## 彩蛋
 
