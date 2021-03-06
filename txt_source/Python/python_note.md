@@ -2140,14 +2140,204 @@
         sys._getframe(n)返回上n层，.f_locals为变量字典
 
     由于Python缺乏真正的变量插值功能，由此产生了各种解决方案。作为已给出的解决方案的替代，有时候会有类似以下的字符串格式化操作
-        '%(name)'%vars()
+        '%(name)s'%vars()
     或者模板字符串的使用
         s=string.Template("$name")
         s.substitute(vars())
     但是，format()和format_map()方法比上面这些替代方案都要更加现代化。使用format()的一个好处是可以同时得到所有关于字符格式化方面的功能(对齐、填充、数值格式化等)，而这些功能在字符串模板对象上是不可能做到的
     字典类中鲜为人知的__missing__()方法可用来处理缺少值时的行为。
     sys.get_frame(1)来返回调用方的栈帧。通过访问属性f_locals来得到局部变量。在大部分的代码中都应该避免去和栈帧打交道。可以修改f_locals的内容，但是修改后并不会产生任何持续性的效果。
-    
+    尽管访问不同的栈帧可能看起来是很邪恶的，但是想意外地覆盖或修改调用方的本地环境也是不可能的
+
+#### 2.16 以固定的列数重新格式化文本
+
+    可以使用textwrap模块来重新格式化文本的输出
+        textwrap.fill(str,n,initial_indent='',subsequent_indent='')
+        n表示列字符数,initial_indent设置首行缩进字符,subsequent_indent设置悬挂缩进字符
+
+    textwrap模块能够以简单直接的方式对文本格式做整理使其适合于打印————尤其是当希望输出结果能很好地显示在终端上。关于终端的尺寸大小，可以通过os.get_terminal_size()来获取
+        os.get_terminal_size().columns
+    fill()方法还有一些额外的选项可以用来控制如何处理制表符、句号等
+
+#### 2.17 在文本中处理HTML和XML实体
+
+    如果要生成文本，使用html.escape()函数来完成替换<or>这样的特殊字符相对来说是比较容易的
+        ex: s='Elements are written as "<tag>text</tag>".'
+            html.escape(s,<quote=False>,<errors='xmlcharrefreplace'>)
+    如果要生成ASCII文本，并且想针对非ASCII字符将它们对应的字符编码实体嵌入到文本中，可以在各种同I/O相关的函数中使用errors='xmlcharrefreplace'参数来实现
+    要替换文本中的实体，那就需要不同的方法。如果实际上是在处理HTML或XML，首先应该尝试使用一个合适的HTML或XML解析器。一般来说，这些工具在解析的过程中会自动处理相关值的替换。
+    如果由于某种原因在得到的文本中带有一些实体，而想手工将它们替换掉，通常可以利用各种HTML或XML解析器自带的功能函数和方法来完成
+        ex: 'Spicy &quot;Jalape&#241;o&quot.'
+            from html.parser import HTMLParser
+            p=HTMLParser()
+            p.unescape('Spicy &quot;Jalape&#241;o&quot.')
+            或html.unescape('Spicy &quot;Jalape&#241;o&quot.')
+            from xml.sax.saxutils import unescape
+            unescape('The prompt is &gt;&gt;&gt;')
+
+    在生成HTML或XML文档时，适当地对特殊字符做转义处理常常是个容易被忽视的细节。尤其是当自己用print()或其他一些基本的字符串格式化函数来产生这类输出时更是如此。简单的解决方案是使用像html.escape()这样的工具函数
+    如果需要反过来处理文本(即,将HTML或XML实体转换成对应的字符)，有许多像xml.sax.saxutils.unescape()这样的工具函数能帮上忙。但是，我们需要仔细考察一个合适的解析器应该如何使用。例如，如果是处理HTML或XML，像html.parser或xml.etree.ElementTree这样的解析模块应该已经解决了有关替换文本中实体的细节问题
+
+#### 2.18 文本分词
+
+    需要将字符串从左到右解析为标记流
+    要对字符串做分词处理，需要做的不仅仅只是匹配模式。还需要有某种方法来识别出模式的类型。
+        ex: text = 'foo = 23 + 42 * 10'
+            tokens = [('NAME','foo'),('EQ','='),('NUM','23'),('PLUS','+'),('NUM','42'),('TIMES','*'),('NUM','10')]
+    要完成这样的分词处理，第一步是定义出所有可能的标记，包括空格。这可以通过正则表达式中的命名捕获组来实现
+        ex: NAME=r'(?P<NAME>[a-zA-Z_][a-zA-z_0-9]*)'
+            master_pat=re.compile('|'.join([NAME,...]))
+    在这种正则表达式模式中，形如?P<TOKENNAME>这样的约定是用来将名称分配给该模式的。
+    接下来使用模式对象的scanner()方法来完成分词操作。该方法会创建一个扫描对象，在给定的文本中重复调用math(),一次匹配一个模式
+        scanner=master_pat.scanner('foo = 42')
+        a=scanner.match()
+        a.lastgroup,a.group()
+    要利用这项技术并将其转换为代码，可以做些清理工作然后将其包含在一个生成器函数中
+        from collections import namedtuple
+        Token = namedtuple('Token',['type','value'])
+        def generate_tokens(pat,text):
+            scanner = pat.scanner(text)
+            for m in iter(scanner.match,None):
+                yield Token(m.lastgroup,m.group())
+        for tok in generate_tokens(master_pat,'foo = 42'):
+            print(tok)
+    如果想以某种方式对标记流做过滤处理，要么定义更多的生成器函数，要么就用生成器表达式
+
+    对于更加高级的文本解析，第一步往往是分词处理。要使用上面展示的扫描技术，有几个重要的细节需要牢记于心。第一，对于每个可能出现在输出文本中的文本序列，都要确保有一个对应的正则表达式模式可以将其识别出来。如果发现有任何不能匹配的文本，扫描过程就会停止。
+    这些标记在正则表达式(即re.compile('|'.join([NAME,NUM,PLUS,TIMES,EQ,WS])))中的顺序同样也很重要。当进行匹配时，re模块会按照指定的顺序来对模式做匹配。因此，如果碰巧某个模式是另一个较长模式的子串时，就必须确保较长的那个模式要先做匹配
+    最后也最重要的是，对于有可能形成子串的模式要多加小心
+    对于更加高级的分词处理，可以使用PyParsing或PLY这样的包
+
+#### 2.19 编写一个简单的递归下降解析器
+
+    需要根据一组语法规则来解析文本，以此执行相应的操作或构建一个抽象语法树来表示输入。
+    在这个问题中，把重点放在根据特定的语法来解析文本上。要做到这些，应该以BNF或EBNF的形式定义出语法的正式规格。比如对于简单的算数运算表达式，语法：
+        expr ::= expr + term
+            | expr - term
+            | term
+        term ::= term * factor
+            | term / factor
+            | factor
+        factor ::= (expr)
+            | NUM
+    又或者以ENBF的形式定义为如下形式
+        expr ::= term { (+|-) term }*
+        term ::= factor { {*|/} factor }*
+        factor ::= ( expr )
+            |NUM
+    在EBNF中，部分包括在{...}*中的规则是可选的。*意味着零个或更多重复项(和在正则表达式中的意义相同)
+    可以把BNF看作是规则替换或取代的一种规范形式，左侧的符号可以被右侧的符号所取代(反之亦然)。一般来说，在解析的过程中会尝试将输入的文本同语法做匹配，通过BNF来完成各种替换和扩展。假设正在解析形如3 + 4 * 5的表达式，这个表达式首先应该被分解为标记流。NUM + NUM * NUM
+    在此基础上，解析过程就通过替换的方式将语法匹配到输入标记上
+        expr
+        expr ::= term {(+|-) term }*
+        expr ::= factor {(*|/) factor }*{(+|-) term }*
+        expr ::= NUM {(*|/) factor }*{(+|-) term }*
+        expr ::= NUM {(+|-) term }*
+        expr ::= NUM + term {(+|-) term }*
+        expr ::= NUM + factor {(*|/) factor }*{(+|-) term }*
+        expr ::= NUM + NUM {(*|/) factor}*{(+|-) term }*
+        expr ::= NUM + NUM * factor {(*|/) factor }*{(+|-) term }*
+        expr ::= NUM + NUM * NUM {(*|/) factor }*{(+|-) term }*
+        expr ::= NUM + NUM * NUM {(+|-) term }*
+        expr ::= NUM + NUM * NUM
+    完成所有的替换需要花上一段时间，这是由输入的规模和尝试去匹配的语法规则所决定的。第一个输入标记是一个NUM，因此替换操作首先会把重点放在匹配这一部分上。一旦匹配上了，重点就转移到下一个标记+上，如此往复。当发现无法匹配下一个标记时，右手侧的特定部分({*/)factor}*)就会消失。在一个成功的解析过程中，整个右手侧部分会完全根据匹配到的输入标记流来相应地扩展。
+        import re
+        import collections
+        # Token specification
+        NUM = r'(?P<NUM>\d+)'
+        PLUS = r'(?P<PLUS>\+)'
+        MINUS = r'(?P<MINUS>-)'
+        TIMES = r'(?P<TIMES>\*)'
+        DIVIDE = r'(?P<DIVIDE>/)'
+        LPAREN = r'(?P<LPAREN>\()'
+        RPAREN = r'(?P<RPAREN>\))'
+        WS = r'(?P<WS>\s+)'
+        master_pat = re.compile('|'.join([NUM, PLUS, MINUS, TIMES,DIVIDE, LPAREN, RPAREN, WS]))
+        # Tokenizer
+        Token = collections.namedtuple('Token', ['type', 'value'])
+        def generate_tokens(text):
+            scanner = master_pat.scanner(text)
+            for m in iter(scanner.match, None):
+                tok = Token(m.lastgroup, m.group())
+                if tok.type != 'WS':
+                    yield tok
+        # Parser
+        class ExpressionEvaluator:
+            '''
+            Implementation of a recursive descent parser. Each method
+            implements a single grammar rule. Use the ._accept() method
+            to test and accept the current lookahead token. Use the ._expect()
+            method to exactly match and discard the next token on on the input
+            (or raise a SyntaxError if it doesn't match).
+            '''
+            def parse(self, text):
+                self.tokens = generate_tokens(text)
+                self.tok = None # Last symbol consumed
+                self.nexttok = None # Next symbol tokenized
+                self._advance() # Load first lookahead token
+                return self.expr()
+            def _advance(self):
+                'Advance one token ahead'
+                self.tok, self.nexttok = self.nexttok, next(self.tokens, None)
+            def _accept(self, toktype):
+                'Test and consume the next token if it matches toktype'
+                if self.nexttok and self.nexttok.type == toktype:
+                    self._advance()
+                    return True
+                else:
+                    return False
+            def _expect(self, toktype):
+                'Consume next token if it matches toktype or raise SyntaxError'
+                if not self._accept(toktype):
+                    raise SyntaxError('Expected ' + toktype)
+            # Grammar rules follow
+            def expr(self):
+                "expression ::= term { ('+'|'-') term }*"
+                exprval = self.term()
+                while self._accept('PLUS') or self._accept('MINUS'):
+                    op = self.tok.type
+                    right = self.term()
+                    if op == 'PLUS':
+                        exprval += right
+                    elif op == 'MINUS':
+                        exprval -= right
+                return exprval
+            def term(self):
+                "term ::= factor { ('*'|'/') factor }*"
+                termval = self.factor()
+                while self._accept('TIMES') or self._accept('DIVIDE'):
+                    op = self.tok.type
+                    right = self.factor()
+                    if op == 'TIMES':
+                        termval *= right
+                    elif op == 'DIVIDE':
+                        termval /= right
+                return termval
+            def factor(self):
+                "factor ::= NUM | ( expr )"
+                if self._accept('NUM'):
+                    return int(self.tok.value)
+                elif self._accept('LPAREN'):
+                    exprval = self.expr()
+                    self._expect('RPAREN')
+                    return exprval
+                else:
+                    raise SyntaxError('Expected NUMBER or LPAREN')
+        e = ExpressionEvaluator()
+        print(e.parse('2 + (3 + 4) * 5'))
+        基本的思路是，对放置在栈中的标记流进行匹配，如果对应就进行运算，同时推向下一个标记
+    如果想做的不只是纯粹的计算，就需要修改ExpressionEvaluuator类来实现。则可以实现对计算式的解析输出
+
+    文本解析是一个庞大的主题。
+    要编写一个递归下降的解析器，总体思路较为简单。将每一条语法规则变为一个函数或方法
+    每个方法的任务很简单————必须针对语法规则的每个部分从左到右扫描，在扫描过程中处理符号标记。从某种意义上说，这些方法的目的就是顺利地将规则消化掉，如果卡住了就产生一个语法错误。要做到这点，需要应用以下实现技术
+        如果规则中的下一个符号标记是另一个语法规则的名称(例如,term或factor)，就需要调用同名的方法。这就是算法中的下降部分————控制其下降到另一个语法规则中。有时候规则会涉及调用已经在执行的方法(例如，在规则factor::='('expr')'中对expr的调用)。这就是算法中的"递归"部分
+        如果规则中的下一个符号标记是一个特殊的符号(例如'(')，需要检查下一个标记，看它们是否能完全匹配。如果不能匹配，这就是语法错误。_expect()方法就是用来处理这些步骤的
+        如果规则中的下一个符号标记存在多种可能的选择(例如+或-)，则必须针对每种可能性对下一个标记做检查，只有在有匹配满足时才前进到下一步。_accept()方法的功能即是如此。在_accept()中如果有匹配错误，就前进到下一步，但如果没有匹配，它只是简单的回退而不会引发一个错误(这样检查才可以继续进行下去)
+        对于语法规则中出现的重复部分(例如expr::=term{('+'|'-')term}*)，这是通过while循环来实现的。一般在循环体中收集或处理所有的重复项，直到无法找到更多的重复项为止。
+        一旦整个语法规则都已经处理完，每个方法就返回一些结果给调用者。这就是在解析过程中将值进行传递的方法。比如，在计算器表达式中，表达式解析的部分结果会作为值来返回。最终它们会结合在一起，在最顶层的语法规则方法中得到执行
+    递归下降解析器可以用来实现相当复杂的解析器。例如，Python代码本身也是通过一个递归下降解析器来解释的，可以通过检查Python源代码中的Grammar/Grammar文件来查看。要自己手写一个解析器时仍然需要面对各种陷阱和局限
+    局限之一就是对于任何涉及左递归形式的语法规则，都没法用递归下降解析器来解决
 
 ## 彩蛋
 
