@@ -2241,90 +2241,93 @@
         expr ::= NUM + NUM * NUM {(+|-) term }*
         expr ::= NUM + NUM * NUM
     完成所有的替换需要花上一段时间，这是由输入的规模和尝试去匹配的语法规则所决定的。第一个输入标记是一个NUM，因此替换操作首先会把重点放在匹配这一部分上。一旦匹配上了，重点就转移到下一个标记+上，如此往复。当发现无法匹配下一个标记时，右手侧的特定部分({*/)factor}*)就会消失。在一个成功的解析过程中，整个右手侧部分会完全根据匹配到的输入标记流来相应地扩展。
-        import re
-        import collections
-        # Token specification
-        NUM = r'(?P<NUM>\d+)'
-        PLUS = r'(?P<PLUS>\+)'
-        MINUS = r'(?P<MINUS>-)'
-        TIMES = r'(?P<TIMES>\*)'
-        DIVIDE = r'(?P<DIVIDE>/)'
-        LPAREN = r'(?P<LPAREN>\()'
-        RPAREN = r'(?P<RPAREN>\))'
-        WS = r'(?P<WS>\s+)'
-        master_pat = re.compile('|'.join([NUM, PLUS, MINUS, TIMES,DIVIDE, LPAREN, RPAREN, WS]))
-        # Tokenizer
-        Token = collections.namedtuple('Token', ['type', 'value'])
-        def generate_tokens(text):
-            scanner = master_pat.scanner(text)
-            for m in iter(scanner.match, None):
-                tok = Token(m.lastgroup, m.group())
-                if tok.type != 'WS':
-                    yield tok
-        # Parser
-        class ExpressionEvaluator:
-            '''
-            Implementation of a recursive descent parser. Each method
-            implements a single grammar rule. Use the ._accept() method
-            to test and accept the current lookahead token. Use the ._expect()
-            method to exactly match and discard the next token on on the input
-            (or raise a SyntaxError if it doesn't match).
-            '''
-            def parse(self, text):
-                self.tokens = generate_tokens(text)
-                self.tok = None # Last symbol consumed
-                self.nexttok = None # Next symbol tokenized
-                self._advance() # Load first lookahead token
-                return self.expr()
-            def _advance(self):
-                'Advance one token ahead'
-                self.tok, self.nexttok = self.nexttok, next(self.tokens, None)
-            def _accept(self, toktype):
-                'Test and consume the next token if it matches toktype'
-                if self.nexttok and self.nexttok.type == toktype:
-                    self._advance()
-                    return True
-                else:
-                    return False
-            def _expect(self, toktype):
-                'Consume next token if it matches toktype or raise SyntaxError'
-                if not self._accept(toktype):
-                    raise SyntaxError('Expected ' + toktype)
-            # Grammar rules follow
-            def expr(self):
-                "expression ::= term { ('+'|'-') term }*"
-                exprval = self.term()
-                while self._accept('PLUS') or self._accept('MINUS'):
-                    op = self.tok.type
-                    right = self.term()
-                    if op == 'PLUS':
-                        exprval += right
-                    elif op == 'MINUS':
-                        exprval -= right
+
+    ```Python
+    import re
+    import collections
+    # Token specification
+    NUM = r'(?P<NUM>\d+)'
+    PLUS = r'(?P<PLUS>\+)'
+    MINUS = r'(?P<MINUS>-)'
+    TIMES = r'(?P<TIMES>\*)'
+    DIVIDE = r'(?P<DIVIDE>/)'
+    LPAREN = r'(?P<LPAREN>\()'
+    RPAREN = r'(?P<RPAREN>\))'
+    WS = r'(?P<WS>\s+)'
+    master_pat = re.compile('|'.join([NUM, PLUS, MINUS, TIMES,DIVIDE, LPAREN, RPAREN, WS]))
+    # Tokenizer
+    Token = collections.namedtuple('Token', ['type', 'value'])
+    def generate_tokens(text):
+        scanner = master_pat.scanner(text)
+        for m in iter(scanner.match, None):
+            tok = Token(m.lastgroup, m.group())
+            if tok.type != 'WS':
+                yield tok
+    # Parser
+    class ExpressionEvaluator:
+        '''
+        Implementation of a recursive descent parser. Each method
+        implements a single grammar rule. Use the ._accept() method
+        to test and accept the current lookahead token. Use the ._expect()
+        method to exactly match and discard the next token on on the input
+        (or raise a SyntaxError if it doesn't match).
+        '''
+        def parse(self, text):
+            self.tokens = generate_tokens(text)
+            self.tok = None # Last symbol consumed
+            self.nexttok = None # Next symbol tokenized
+            self._advance() # Load first lookahead token
+            return self.expr()
+        def _advance(self):
+            'Advance one token ahead'
+            self.tok, self.nexttok = self.nexttok, next(self.tokens, None)
+        def _accept(self, toktype):
+            'Test and consume the next token if it matches toktype'
+            if self.nexttok and self.nexttok.type == toktype:
+                self._advance()
+                return True
+            else:
+                return False
+        def _expect(self, toktype):
+            'Consume next token if it matches toktype or raise SyntaxError'
+            if not self._accept(toktype):
+                raise SyntaxError('Expected ' + toktype)
+        # Grammar rules follow
+        def expr(self):
+            "expression ::= term { ('+'|'-') term }*"
+            exprval = self.term()
+            while self._accept('PLUS') or self._accept('MINUS'):
+                op = self.tok.type
+                right = self.term()
+                if op == 'PLUS':
+                    exprval += right
+                elif op == 'MINUS':
+                    exprval -= right
+            return exprval
+        def term(self):
+            "term ::= factor { ('*'|'/') factor }*"
+            termval = self.factor()
+            while self._accept('TIMES') or self._accept('DIVIDE'):
+                op = self.tok.type
+                right = self.factor()
+                if op == 'TIMES':
+                    termval *= right
+                elif op == 'DIVIDE':
+                    termval /= right
+            return termval
+        def factor(self):
+            "factor ::= NUM | ( expr )"
+            if self._accept('NUM'):
+                return int(self.tok.value)
+            elif self._accept('LPAREN'):
+                exprval = self.expr()
+                self._expect('RPAREN')
                 return exprval
-            def term(self):
-                "term ::= factor { ('*'|'/') factor }*"
-                termval = self.factor()
-                while self._accept('TIMES') or self._accept('DIVIDE'):
-                    op = self.tok.type
-                    right = self.factor()
-                    if op == 'TIMES':
-                        termval *= right
-                    elif op == 'DIVIDE':
-                        termval /= right
-                return termval
-            def factor(self):
-                "factor ::= NUM | ( expr )"
-                if self._accept('NUM'):
-                    return int(self.tok.value)
-                elif self._accept('LPAREN'):
-                    exprval = self.expr()
-                    self._expect('RPAREN')
-                    return exprval
-                else:
-                    raise SyntaxError('Expected NUMBER or LPAREN')
-        e = ExpressionEvaluator()
-        print(e.parse('2 + (3 + 4) * 5'))
+            else:
+                raise SyntaxError('Expected NUMBER or LPAREN')
+    e = ExpressionEvaluator()
+    print(e.parse('2 + (3 + 4) * 5'))
+    ```
         基本的思路是，对放置在栈中的标记流进行匹配，如果对应就进行运算，同时推向下一个标记
     如果想做的不只是纯粹的计算，就需要修改ExpressionEvaluuator类来实现。则可以实现对计算式的解析输出
 
@@ -2337,7 +2340,136 @@
         对于语法规则中出现的重复部分(例如expr::=term{('+'|'-')term}*)，这是通过while循环来实现的。一般在循环体中收集或处理所有的重复项，直到无法找到更多的重复项为止。
         一旦整个语法规则都已经处理完，每个方法就返回一些结果给调用者。这就是在解析过程中将值进行传递的方法。比如，在计算器表达式中，表达式解析的部分结果会作为值来返回。最终它们会结合在一起，在最顶层的语法规则方法中得到执行
     递归下降解析器可以用来实现相当复杂的解析器。例如，Python代码本身也是通过一个递归下降解析器来解释的，可以通过检查Python源代码中的Grammar/Grammar文件来查看。要自己手写一个解析器时仍然需要面对各种陷阱和局限
-    局限之一就是对于任何涉及左递归形式的语法规则，都没法用递归下降解析器来解决
+    局限之一就是对于任何涉及左递归形式的语法规则，都没法用递归下降解析器来解决。假设需要解释如下的规则:
+        item ::=items ',' item
+            |item
+    则一定会产生无穷递归的错误
+    也可能会陷入到语法规则自身的麻烦中。比如考虑标准算数中关于计算顺序的约定
+    对于真正复杂的语法解析，最好还是使用像PyParsing或PLY这样的解析工具。如果使用PLY，解析计算器表达式代码如下:
+
+    ```Python
+    from ply.lex import lex
+    from ply.yacc import yacc
+    # Token list
+    tokens = [ 'NUM', 'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'LPAREN', 'RPAREN' ]
+    # Ignored characters
+    t_ignore = ' \t\n'
+    # Token specifications (as regexs)
+    t_PLUS = r'\+'
+    t_MINUS = r'-'
+    t_TIMES = r'\*'
+    t_DIVIDE = r'/'
+    t_LPAREN = r'\('
+    t_RPAREN = r'\)'
+    # Token processing functions
+    def t_NUM(t):
+        r'\d+'
+        t.value = int(t.value)
+        return t
+    # Error handler
+    def t_error(t):
+        print('Bad character: {!r}'.format(t.value[0]))
+        t.skip(1)
+    # Build the lexer
+    lexer = lex()
+    # Grammar rules and handler functions
+    def p_expr(p):
+        '''
+        expr : expr PLUS term
+            | expr MINUS term
+        '''
+        if p[2] == '+':
+            p[0] = p[1] + p[3]
+        elif p[2] == '-':
+            p[0] = p[1] - p[3]
+    def p_expr_term(p):
+        '''
+        expr : term
+        '''
+        p[0] = p[1]
+    def p_term(p):
+        '''
+        term : term TIMES factor
+        | term DIVIDE factor
+        '''
+        if p[2] == '*':
+            p[0] = p[1] * p[3]
+        elif p[2] == '/':
+            p[0] = p[1] / p[3]
+    def p_term_factor(p):
+        '''
+        term : factor
+        '''
+        p[0] = p[1]
+    def p_factor(p):
+        '''
+        factor : NUM
+        '''
+        p[0] = p[1]
+    def p_factor_group(p):
+        '''
+        factor : LPAREN expr RPAREN
+        '''
+        p[0] = p[2]
+    def p_error(p):
+        print('Syntax error')
+    parser = yacc()
+    print(parser.parse('2+(3+4)*5)')
+    ```
+    在这份代码中会发现所有的东西都是以一种更高层的方式定义的。我们只需编写匹配标记符号的正则表达式，以及当各种匹配语法规则时所需要的高层处理函数就行了。而实际的运行解析器、接受符号标记等都完全由库来实现
+    Python自带的ast模块也值得学习
+
+#### 2.20 在字节串上执行文本操作
+
+    字节串已经支持大多数和文本字符串一样的内建操作
+        data=b'hello world'
+        data[0:5]
+        data.startswith(b'hello')
+        data.split()
+        data.replace(b'hello',b'hello cruel')
+    类似的操作在字节数组上也能完成
+    可以在字节串上执行正则表达式的模式匹配操作，但是模式本身需要以字节串的形式来指定
+
+    就绝大部分情况而言，几乎所有能在文本字符串上执行的操作同样也可以在字节串上进行
+    但是单独访问字节串的某个元素时，返回的是字符对应的值。这种语义上的差异会对试图按照字符的方式处理面向字节流数据的程序带来影响
+    其次，字节串并没有提供一个漂亮的字符串表示，因此打印结果并不干净利落，除非首先将其解码为文本字符串
+    同样道理，在字节串上是没有普通字符串那样的格式化操作的
+    如果想在字节串上做任何形式的格式化操作，应该使用普通的文本字符串然后再做编码
+    最后，需要注意的是使用字节串会改变某些特定操作的语义————尤其是那些与文件系统相关的操作。如果提供一个以字节而不是文本字符串来编码的文件名，文件系统通常都会禁止对文件名的编码/解码
+    以字节串作为目录名从而导致产生的名称以未经编码的原始字节形式返回。在显示目录内容时，文件名包含了原始的UTF-8编码。
+    可能会因为性能上有可能得到略微提升而倾向于将字节串作为文本字符串的替代来使用。尽管操纵字节确实要比文本来的略微高效一些(由于同Unicode相关的固有开销较高)，但这么做通常会导致非常混乱和不符合语言习惯的代码。常会发现字节串和Python中许多其他部分并不能很好地相容，这样为了保证结果的正确性，只能手动去执行各种各样的编码/解码操作。
+
+### 第三章 数值、日期和时间
+
+    在Python中使用整数和浮点数进行数值计算较为简单。但是，如果需要使用分数、矩阵或者日期时间，就需要额外的工作
+
+#### 3.1 数值近似
+
+    需要将浮点数近似到固定位数的小数
+    对于简单的近似，使用Python自带的round(value,ndigits)函数
+    当数值刚好为近似选择的中间值，将会被近似到最近的偶数。例如1.5和2.5都会被近似到2
+    round()参数ndigits可以为负数，-1、-2、-3将会使数值近似到十、百、千位，以此类推
+
+    不要将近似与格式化数值输出混淆。如果目的是简单输出一个指定位数的数值，一般不需要使用round()。只需要在格式化时指定精度即可
+    而且，不必通过对浮点数近似来"解决"可见的精度问题
+        ex: a,b=2.1,4.2
+            c=a+b #6.300000000000001
+            c = round(c, 2)
+    对于绝大多数涉及浮点数的程序，这样做是不必要也不推荐的。尽管计算中会引入微小错误，但这些错误行为是可以被理解和忍受的。如果一定要避免这样的错误(例如在金融程序中)，可以考虑使用decimal模块
+
+#### 3.2 进行精确的小数运算
+
+    承接上节最后，需要避免浮点运算中自然生成的误差
+    众所周知，浮点数不能精确地表示十进制数。而且，即使是简单的数值运算都会引入细微误差
+    这些误差是由底层CPU的浮点单元按照IEEE 754(IEEE二进制浮点数算数标准)所带来的"特性"
+    既然Python的浮点数据类型使用原始表示方式储存数据，因此当代码中使用浮点数时，误差无可避免
+    如果需要更高的精度(并愿意放弃一部分性能)，可以使用decimal模块
+        ex: from decimal import Decimal
+            a=Decimal('4.2')
+            b=Decimal('2.1')
+            a+b # Decimal('6.3')
+    初次接触，这样可能会有点奇怪(例如用字符串表示数值)。但是
+    https://learning.oreilly.com/library/view/python-cookbook-3rd/9781449357337/ch03.html
 
 ## 彩蛋
 
