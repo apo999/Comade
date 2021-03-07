@@ -103,10 +103,65 @@ $$
     图像的频谱幅度随频率增大而迅速衰减
         许多图像的傅里叶频谱的幅度随着频率的增大而迅速减小，这使得在显示与观察一幅图像的频谱时遇到困难。但以图像的形式显示它们时，其高频项变得越来越不清楚
         解决办法：对数化
-        例题
+        例题：对一幅图像实施二维DFT，显示并观察其频谱。
+            解：源程序如下
+                %对单缝进行快速傅里叶变换，以三种方式显示频谱，
+                %即：直接显示（坐标原点在左上角）；把坐标原点平
+                %移至中心后显示；以对数方式显示。
+                f=zeros(512,512);
+                f(246:266,230:276)=1;
+                subplot(221),imshow(f,[]),title('单狭缝图像')
+                F=fft2(f); %对图像进行快速傅里叶变换
+                S=abs(F);
+                subplot(222)
+                imshow(S,[]) %显示幅度谱
+                title('幅度谱（频谱坐标原点在左上角）')
+                Fc=fftshift(F); %把频谱坐标原点由左上角移至屏幕中央
+                subplot(223)
+                Fd=abs(Fc);
+                imshow(Fd,[])
+                ratio=max(Fd(:))/min(Fd(:))
+                %ratio = 2.3306e+007,动态范围太大，显示器无法正常显示
+                title('幅度谱（频谱坐标原点在屏幕中央）')
+                S2=log(1+abs(Fc));
+                subplot(224)
+                imshow(S2,[])
+                title('以对数方式显示频谱')
     二维离散傅里叶变换的性质
         线性性
 $$
 f_1(x,y)\leftrightarrow{F_1(u,v)},f_2(x,y)\leftrightarrow{F_2(u,v)}\Rightarrow{c_1f_1(x,y)+c_2f_2(x,y)\leftrightarrow{c_1F_1(u,v)+c_2F_2(u,v)}}
 $$
-        证明
+            证明
+$$
+DFT[c_1f_1(x,y)+c_2f_2(x,y)]\\
+=\sum_{x=0}^{M-1}\sum_{y=0}^{N-1}[c_1f_1(x,y)+c_2f_2(x,y)]·e^{-j2\pi(\frac{ux}{M}+\frac{vy}{N})}\\
+=c_1\sum_{x=0}^{M-1}\sum_{y=0}^{N-1}f_1(x,y)·e^{-j2\pi(\frac{ux}{M}+\frac{vy}{N})}+c_2\sum_{x=0}^{M-1}\sum_{y=0}^{N-1}F_2(x,y)·e^{-j2\pi(\frac{ux}{M}+\frac{vy}{N})}\\
+=c_1F_1(u,v)+c_2F_2(u,v)
+$$
+                %imagelinear.m
+                %该程序验证了二维DFT的线性性质,注意AB两张图片的尺寸必须相同
+                f=imread('A.png');
+                g=imread('B.png');
+                [m,n]=size(g);
+                f(m,n)=0;
+                f=im2double(f);
+                g=im2double(g);
+                subplot(221)
+                imshow(f,[])
+                title('f')
+                subplot(222)
+                imshow(g,[])
+                title('g')
+                F=fftshift(fft2(f));
+                G=fftshift(fft2(g));
+                subplot(223)
+                imshow(log(abs(F+G)),[])
+                FG=fftshift(fft2(f+g));
+                title('DFT(f)+DFT(g)')
+                subplot(224)
+                imshow(log(abs(FG)),[])
+                title('DFT(f+g)')
+        可分离性
+            二维DFT可视为由沿x,y方向的两个一维DFT所构成
+            
