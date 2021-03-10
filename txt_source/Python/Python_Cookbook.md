@@ -974,3 +974,65 @@
     可以使用dateutil.relativedelta()函数完成许多同datetime模块相似的时间计算。dateutil的一个显著特点是在处理有关月份的问题时能填补一些datetime模块留下的空缺(可正确处理不同月份中的天数)
         from dateutil.relativedelta import relativedelta
             a+relativedelta(months=+1)
+
+### 3.13 计算上周5的日期
+
+    Python的datetime模块中有一些使用函数和类可以完成这样的运算
+    通过datetime.today()、today对象的.weekday()属性来进行倒推
+
+    将起始日期和目标日期映射到它们在一周之中的位置上。然后用取模运算计算上一次目标日期出现时到起始日期为止一共经过的天数。然后从起始日期中减去一个合适的timedalta实例
+    如果需要执行大量类似的日期计算，最好安装python-dateutil包
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        from dateutil.rrule import *
+        d=datetime.now()
+        d+relativedelta(weekday=FR)
+        d+relativedelta(weekday=FR(-1))
+
+### 3.14 找出当月的日期范围
+
+    对日期进行迭代循环并不需要事先构建一个包含所有日期的列表。只需计算出范围的开始和结束日期，然后在迭代时利用datetime.timedelta对象来递增日期就可以了
+    calendar.monthrange函数可接受任意的datetime对象，并返回一个包含对应月份第一个工作日的日期和天数的元组
+        calendar.monthrange(year,month)
+
+    首先计算出相应月份中第一天的日期。一种快速求解的方法是利用date或者datetime对象的replace()方法，只要将属性days设为1就可以了。关于replace()方法，一个好的方面就是它创建出的对象和输入对象类型是一致的。
+    用calendar.monthrange()函数来找出待求解的月份中有多少天。当需要得到有关日历方面的基本信息时，calendar模块都会非常有用。monthrange()是其中唯一的一个可返回元组的函数，元组中包含当月第一个工作日的日期(0-6，依次代表周一到周日)以及当月的天数(28-31)
+    一旦知道了这个月中有多少天，那么结束日期就可以通过在起始日期上加上一个合适的timedelta对象来表示。
+    要循环日期范围，采用标准的算术以及比较操作符。timedelta实例可用来递增日期，而<操作符用来检查当前日期是否超过了结束日期
+    最理想的方法是创建一个专门处理日期的函数，而且用法和Python内建的range()一样。可以用生成器的方式来实现
+
+### 3.15 将字符串转换为日期
+
+    Python中的标准模块datetime是用来处理这种问题的简单方案
+        datetime.strptime(text,'%Y-%m-%d')
+
+    datetime.strptime()方法支持许多格式化代码，比如%Y代表以4位数字表示的年份，%m代表以2位数字表示的月份。这些格式化占位符也可以反过来用在将datetime对象转换为字符串上。如果需要以字符串形式来表示datetime对象并且想让输出格式变得美观时，可以这样使用
+        datetime.strftime(datetime,'%A %B %d, %Y')
+    这里值得一提的是strptime()的性能通常比我们想象的还要糟糕许多，这是因为该函数是用纯Python代码实现的，而且需要处理各种各样的系统区域设定。如果要在代码中解析大量的日期，而且事先知道日期的准确格式，那么自行实现一个解决方案可能会获得巨大的性能提升。如果知道日期是以'YYYY-MM-DD'的形式表示的，可以利用str.split()
+    比datetime.strptime()快了7倍多。如果需要处理大量涉及日期的数据时，这很可能就是需要考虑的问题
+
+### 3.16 处理涉及到时区的日期问题
+
+    对于几乎涉及失去的问题，都应该使用pytz模块来解决。这个Python包提供了奥尔森时区数据，这也是许多语言和操作系统所使用的时区信息标准
+    pyzt模块主要用来本地化由datetime库创建的日期。
+        d=datetime(2012,12,21,9,30,0)
+        loc_d=central.localize(d)
+    一旦日期经过了本地化处理，它就可以转换为其他的时区。要知道同一时间在班加罗尔是几点
+        bang_d=loc_d.astimezone(timezone('Asia/Kolkata'))
+    如果打算对本地化的日期做算术计算，需要特别注意夏令时转换和其他方面的细节。2013年美国的标准夏令时于本地时间3月13日凌晨2点开始(此时时间要往前拨一个小时)。如果直接进行算术计算就会得到错误的结果
+    因为上面的代码没有把本地时间中跳过的1小时给算上。要解决这个问题，可以使用timezone对象的normalize()方法。
+        later = central.normalize(loc_d+timedelta(minutes=30))
+
+    为了不让我们的头炸掉，通常用来处理本地时间的方法是将所有的日期都转换为UTC(世界统一时间)时间，然后在所有的内部存储和处理中都是用UTC时间
+        utc_d=loc_d.astimezone(pytz.utc)
+    一旦转换为UTC时间，就不用担心夏令时以及其他那些麻烦事了。因此，可以像之前那样对日期执行普通的算术运算。如果需要将日期以本地时间输出，只需将其转换为合适的时区即可。
+    在同时区打交道时，一个常见的问题是如何知道时区的名称。要找出时区名称，可以考察一下pyzt.country_timezones，这是一个字典，可以使用ISO 3166国家代码作为key来查询
+    根据PEP 431的描述，为了增强对时区的支持pyzt模块可能将不再建议使用。(但仍建议使用UTC时间等)
+
+## 第四章 迭代器和生成器
+
+    迭代是Python中最强有力的特性之一。从高层次看，可以简单地把迭代看作是一种处理序列中元素的方式。但还可以创建自己的可迭代对象，在itertools模块中选择实用的迭代模式、构建生成器等。
+
+### 4.1 手动访问迭代器中的元素
+
+    需要处理某个可迭代对象中的元素，但是基于某种原因不能也不想使用for循环
