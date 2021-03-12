@@ -1036,3 +1036,204 @@
 ### 4.1 手动访问迭代器中的元素
 
     需要处理某个可迭代对象中的元素，但是基于某种原因不能也不想使用for循环
+    要手动访问可迭代对象中的元素，可以使用next()函数，然后自己编写代码来捕获StopIteration异常。采用手工方式从文件中读取文本行
+        with oprn('filename') as f:
+            try:
+                while True:
+                    line =next(f)
+                    print(line,end='')
+            except StopIteration:
+                pass
+    一般来说，StopIteration异常是用来通知我们迭代结束的。但是，如果手动使用next()，也可以命令它返回一个结束值，比如说None   next(f,None)
+
+    大多数情况下，会用for语句来访问可迭代对象中的元素。但偶尔也会碰到需要对底层迭代机制做更精细控制的情况。了解迭代时实际发生了些什么是很有帮助的
+    以下对迭代时发生的基本过程做了解释说明
+        items=[1,2,3]
+        it = iter(items) # Invokes items.__iter__()
+        next(it) # Invokes it.__next__()
+
+### 4.2 委托迭代
+
+    构建了一个自定义的容器对象，其内部持有一个列表、元组或其他的可迭代对象。要让新容器能够完成迭代操作
+    一般来说，要做的就是定义一个__iter__()方法，将迭代请求委托到对象内部持有的容器上
+        def __iter__(self):
+            return iter(self.children)
+    __iter__()方法只是简单地将迭代请求转发给对象内部持有的_children属性上
+
+    Python的迭代协议要求__iter__()返回一个特殊的迭代器对象，由该对象实现的__next__()方法来完成实际的迭代。如果要做的只是迭代另一个容器中的内容，不必担心底层细节是如果工作的，所要作的就是转发迭代请求
+    iter(s)通过调用s.__iter__()来简单地返回底层的迭代器，这和len(s)调用s.__len__()的方式是一样的
+
+### 4.3 用生成器创建新的迭代模式
+
+    实现一个自定义的迭代模式，使其区别于常见的内建函数(即range()、reversed()等)
+    如果想实现一种新的迭代方式，可使用生成器函数来定义。产生某个范围内的浮点数的生成器：
+        def frange(start,stop,increment):
+            x=start
+            while x<stop:
+                yield x
+                x+=increment
+    要使用这个函数，可以使用for循环对其迭代，或者通过其他可以访问可迭代对象中元素的函数(例如sum()、list()等)来使用
+
+    函数中只要出现了yield语句就会将其转变为一个生成器。与普通函数不同，生成器只会在响应迭代操作时才运行。
+        def countdown(n):
+            print('Starting to count from',n)
+            while n>0:
+                yield n
+                n-=1
+            print('Done!')
+        c=countdown(3)
+        next(c) next(c) next(c) next(c)
+    核心特性是生成器函数只会在响应迭代过程中的"next"操作时才会运行。一旦生成器函数返回，迭代也就停止了。通常用来处理迭代的for语句替我们处理了这些细节，一般情况下不必为此操心
+
+### 4.4 实现迭代协议
+
+    要在对象上实现可迭代功能，最简单的方式就是使用生成器函数。用Node类来表示树结构。实现一个迭代器能够以深度优先的模式遍历树的节点:
+
+    ```Python
+        class Node:
+            def __init__(self,value):
+                self.value=value
+                self.children=[]
+            def __repr__(self):
+                return 'Node({!r})'.format(self._value)
+            def add_child(self,node):
+                self._children.append(node)
+            def __iter__(self):
+                return iter(self._children)
+            def depth_first(self):
+                yield self
+                for c in self:
+                    yield from c.depth_first()
+    ```
+    depth_first()的实现非常易于阅读，描述起来也很方便。首先产生出自身，然后迭代每个子节点，利用子节点的depth_first()方法(通过yield from 语句)产生出其他元素
+
+    Python的迭代协议要求__iter__()返回一个特殊的迭代器对象，该对象必须实现__next__()方法，并使用了StopIteration异常来通知迭代的完成。实现这样的对象常常会比较繁琐。
+
+    ```Python
+        class Node2:
+            def __init__(self, value):
+                self._value = value
+                self._children = []
+            def __repr__(self):
+                return 'Node({!r})'.format(self._value)
+            def add_child(self, node):
+                self._children.append(node)
+            def __iter__(self):
+                return iter(self._children)
+            def depth_first(self):
+                return DepthFirstIterator(self)
+        class DepthFirstIterator(object):
+            '''
+            Depth-first traversal
+            '''
+            def __init__(self, start_node):
+                self._node = start_node
+                self._children_iter = None
+                self._child_iter = None
+            def __iter__(self):
+                return self
+            def __next__(self):
+            # Return myself if just started; create an iterator for children
+                if self._children_iter is None:
+                    self._children_iter = iter(self._node)
+                    return self._node
+            # If processing a child, return its next item
+                elif self._child_iter:
+                    try:
+                        nextchild = next(self._child_iter)
+                        return nextchild
+                    except StopIteration:
+                        self._child_iter = None
+                        return next(self)
+            # Advance to the next child and start its iteration
+                else:
+                    self._child_iter = next(self._children_iter).depth_first()
+                    return next(self)
+    ```
+    DepthFirstIterator类的工作方式和生成器版本的实现相同但是却复杂了很多，因为迭代器必须维护迭代过程中许多复杂的状态，要记住当前迭代过程进行到哪里了。把迭代器以生成器的形式来定义就会很方便
+
+### 4.5 反向迭代
+
+    可以使用内建的reversed()函数实现反向迭代
+    反向迭代只有在待处理的对象拥有可确定的大小，或者对象实现了__reversed__()特殊方法时，才能奏效。如果这两个条件都无法满足，则必须首先将这个对象转换为列表。
+    将可迭代对象转换为列表可能会消耗大量的内存，尤其是当可迭代对象较大时更是如此
+
+    如果实现了__reversed__()方法，就可以在自定义的类上实现反向迭代
+
+    ```Python
+        class Countdown:
+            def __init__(self, start):
+                self.start = start
+            # Forward iterator
+            def __iter__(self):
+                n = self.start
+                while n > 0:
+                yield n
+                n -= 1
+    ```
+    定义一个反向迭代器可使代码变得更加高效，因为这样就无需先把数据放到列表中，然后再反向去迭代列表
+
+### 4.6 定义带有额外状态的生成器函数
+
+    定义一个生成器函数，还涉及一些额外的状态，希望能够以某种形式将这些状态暴露给用户
+    如果想让生成器将状态暴露给用户，可以将其实现为一个类，然后把生成器函数的代码放到__iter__()方法中
+
+    ```Python
+        from collections import deque
+        class linehistory:
+            def __init__(self,lines,histlen=3):
+                self.lines=lines
+                self.history = deque(maxlen=histlen)
+            def __iter__(self):
+                for lineno, line in enumerate(self.lines, 1):
+                    self.history.append((lineno, line))
+                    yield line
+            def clear(self):
+                self.history.clear()
+    ```
+    要使用这个类，可以将其看作是一个普通的生成函数。但由于它会创建一个实例，所以可以方位内部属性，比如history属性或clear()方法
+
+    有了生成器之后很容易掉入陷阱，即试着只用函数来解决所有的问题。如果生成器函数需要以不寻常的方式同程序中其他部分交互的话(比如暴露属性，允许通过方法调用来获得控制等)，那就会导致出现相当复杂的代码。如果遇到了这种情况，就用类来定义。将生成器函数定义在__iter__()方法中并没有对算法做任何改变。由于状态只是类的一部分，这一事实使得我们可以很容易将其作为属性和方法来提供给用户交互
+    如果打算用除了for循环之外的技术来驱动迭代过程的话，可能需要额外调用一次iter()
+
+### 4.7 对迭代器做切片操作
+
+    对由迭代器产生的数据做切片处理，但是普通的切片操作符在这里不管用
+    要对迭代器和生成器做切片操作，itertools.islice()函数是完美的选择
+        for x in itertools.islice(c,10,20):
+            print(x)
+
+    迭代器和生成器是没法执行普通的切片操作的，这是因为不知道它们的长度是多少(而且它们也没有实现索引)。islice()产生的结果是一个迭代器，它可以产生出所需要的切片元素，但这是通过访问并丢弃所有起始索引之前的元素来实现的。之后的元素会由islice()对象产生出来，直到到达结束索引为止
+    islice()会消耗掉所提供的迭代器中的数据。由于迭代器中的元素只能访问一次，没法倒回去，需要引起注意。如果之后还需要倒回去访问前面的数据，那也许就应该先将数据转到列表中
+
+### 4.8 跳过可迭代对象中的前一部分元素
+
+    对某个可迭代对象做迭代处理，需要丢弃掉前面几个元素
+    itertools模块中有一些函数可用来解决这个问题。第一个是itertools.dropwhile()函数。使用这个函数只需要提供一个函数和可迭代对象。该函数返回的迭代器会丢弃掉序列中的前面几个元素，只要它们在所提供的函数中返回True即可(提供的函数起一个筛子的作用，满足条件的都会丢弃直到有元素不满足为止)。这之后，序列中剩余的全部元素都会产生出来
+    根据测试函数的结果来跳过前面的元素。如果恰好知道要跳过多少个元素，可以使用itertools.islice()
+        islice(items,n,None)
+    islice()的最后一个参数None用来表示想要前3个元素之外的所有元素，而不是只要前3个元素
+
+    dropwhile()和islice()都是很方便实用的函数，可以利用它们来避免写出混乱代码
+    dropwhile会丢弃开始部分的注释行，但同样会丢弃整个文件中出现的所有注释行。
+    丢弃元素，直到有某个元素不满足测试函数为止。所有剩余元素全部会不经过筛选而直接返回
+    适用于所有的可迭代对象，包括那些事先无法确定大小的对象也是如此。包括生成器、文件以及类似的对象。
+
+### 4.9 迭代所有可能的组合或排列
+
+    对一系列元素所有可能的组合或排列进行迭代
+    itertools模块中提供了3个函数。第一个是itertools.permutations(items,n)————它接受一个元素集合，将其中所有的元素重排列为所有可能的情况，并以元组序列的形式返回(即将元素之间的顺序打乱成所有可能的情况)
+    如果想得到较短长度的所有全排列，可以提供一个可选的长度参数
+    使用itertools.combinations(items,n)可产生输入序列中所有元素的全部组合形式
+    对于combinations()来说，元素之间的实际顺序是不予考虑的。
+    当产生组合时，已经选择过的元素将从可能的候选元素(考虑范围)中移除掉。itertools.combinations_with_replacement(items,n)函数解除了这一限制，允许相同的元素得到多次选择
+
+    面对看起来很复杂的迭代问题时，应该总是先去查看itertools模块
+
+### 4.10 以索引-值对的形式迭代序列
+
+    想记录迭代一个序列时序列中当前处理到的元素索引
+    内建的enumerate(list,start)函数可以很好地解决这个问题
+    如果要打印出规范的行号(这种情况下一般是从1开始而不是0)，可以传入一个start参数作为起始索引
+    这种情况特别适合于跟踪记录文件中的行号，当想在错误信息中加上行号时就特别有用了。
+    
