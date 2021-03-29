@@ -1262,4 +1262,709 @@
     采用chain()的解决方案要更加优雅
 
     itertools.chain()可接受一个或多个可迭代对象作为参数，然后它会创建一个迭代器，该迭代器可连续访问并返回所提供的每个可迭代对象中的元素。尽管区别很小，但是chain()比首先将各个序列合并在一起然后再迭代要更加高效
-    chain()并不会产生一个全新的序列，在内存上更加优化
+    chain()并不会产生一个全新的序列，在内存上更加优化，而且也适用于可迭代对象不是同一种类型的情况
+
+### 4.13 创建处理数据的管道
+
+    想以流水线式的形式对数据进行迭代处理(类似Unix下的管道)。比如有海量的数据需要处理，但是没法完全将数据加载到内存中去
+    生成器函数是一种实现管道机制的好方法。假设有一个超大的目录，其中都是想要处理的日志文件
+    要处理这些文件，可以定义一系列小型的生成器函数，每个函数执行特定的独立任务
+
+    ```Python
+    import os
+    import fnmatch
+    import gzip
+    import bz2
+    import re
+    def gen_find(filepat, top):
+    '''
+    Find all filenames in a directory tree that match a shell wildcard pattern
+    '''
+        for path, dirlist, filelist in os.walk(top):
+            for name in fnmatch.filter(filelist, filepat):
+                yield os.path.join(path,name)
+    def gen_opener(filenames):
+    '''
+    Open a sequence of filenames one at a time producing a file object.
+    The file is closed immediately when proceeding to the next iteration.
+    '''
+        for filename in filenames:
+            if filename.endswith('.gz'):
+                f = gzip.open(filename, 'rt')
+            elif filename.endswith('.bz2'):
+                f = bz2.open(filename, 'rt')
+            else:
+                f = open(filename, 'rt')
+            yield f
+            f.close()
+    def gen_concatenate(iterators):
+    '''
+    Chain a sequence of iterators together into a single sequence.
+    '''
+        for it in iterators:
+            yield from it
+    def gen_grep(pattern, lines):
+    '''
+    Look for a regex pattern in a sequence of lines
+    '''
+        pat = re.compile(pattern)
+        for line in lines:
+            if pat.search(line):
+                yield line
+    ```
+    然后简单地将这些函数堆叠起来形成一个数据处理的管道。如果要找出所有包含关键字的日志行：
+        lognames = gen_find('access-log*','www')
+        files = gen_opener(lognames)
+        lines = gen_concatenate(files)
+        pylines = gen_grep('(?i)python',lines)
+    如果稍后想对管道进行扩展，甚至可以在生成器表达式中填充数据。找出传送的字节数并统计出总字节量
+        bytecolumn = (line.rsplit(None,1)[1] for line in pylines)
+        bytes = (int(x) for x in bytecolumn if x != '-')
+
+    将数据以管道的形式进行处理可以很好地适用于其他广泛的问题，包括解析、读取实时的数据源、定期轮询等
+    在这里yield语句表现为数据的生产者，而for循环表现为数据的消费者。当生成器被串联起来时，在迭代中每个yield语句都为管道中下个阶段的处理过程产生出数据。sum()函数实际上在驱动整个程序，每一次都从生成器管道中取出一份数据
+    这种方法的优点在于每个生成器函数都比较短小而且功能独立，使得编写和维护都很容易。在许多情况下，其通用性使得它们可以在其他上下文中使用。
+    这种方法在内存使用上也非常高效。由于处理过程的迭代特性，只会用到非常少的内存
+    gen_concatenate()函数的目的是将输入序列连接为一个长序列行。itertools.chain()函数可以实现类似的功能，但是这需要将所有的可迭代对象指定为它的参数才行。这么做会使得gen_opener()生成器被完全耗尽。由于这个生成器产生的是打开的文件序列，在下一个迭代步骤中会被立刻关闭，因此不能用chain()
+    gen_concatenate()函数中也出现了实现委托给一个子生成器的yield from语句，该句简单地使gen_concatenate()函数发射出所有由生成器it产生的值。
+    管道方法并不会总是适用于每一个数据处理问题。有时候需要马上处理所有的数据。但使用生成器管道可以在逻辑上将问题分解成一种工作流程
+    有关生成器可以参考David Beazley的"针对系统程序员之生成器技巧"
+
+### 4.14 扁平化处理嵌套型的序列
+
+    可以通过带有yield from语句的递归生成器函数来实现
+
+    ```Python
+    from collections import Iterable
+    def flatten(items, ignore_types=(str, bytes)):
+        for x in items:
+            if isinstance(x, Iterable) and not isinstance(x, ignore_types):
+                yield from flatten(x)
+            else:
+                yield x
+    ```
+    isinstance(x,Iterable)简单地检查是否有某个元素是可迭代的。如果确实有，就用yield from将这个可迭代对象作为一种子例程进行递归，将它所有的值都产生出来。最后得到的结果就是一个没有嵌套的单值序列
+    代码中额外的参数ignore_types和对not isinstance(x,ignore_types)的检查是为了避免将字符串和字节串解释为可迭代对象，进而将它们展开为单独的一个个字符。这使得嵌套型的字符串列表能够以大多数人所期望的方式工作
+
+    如果想编写生成器用来把其他的生成器当作子例程调用，yield from是个不错的快捷方式。否则就需要编写有额外for循环的代码
+    对字符串和字节串的额外检查是为了避免将这些类型的对象展开为单独的字符。如果还有其他类型是不想要展开的，可以为ignore_types参数提供不同的值来确定
+    yield from在涉及协程和基于生成器的并发型高级程序中有着更加重要的作用
+
+### 4.15 合并多个有序序列，再对整个有序序列进行迭代
+
+    heapq.merge()函数则能够实现
+
+    heapq.merge()的迭代性质意味着它对所有提供的序列都不会做一次性读取。这意味着可以用它处理非常长的序列，而开销非常小。
+    heapq.merge()要求所有的输入序列都是有序的。它不会首先将所有的数据读取到堆中，或者预先做任何的排序操作。也不会对输入做任何验证，以检查它们是否满足有序的要求。只是简单地检查每个输入序列中的第一个元素，将最小的那个发送出去。然后再从之前选择的序列中读取一个新的元素，再重复执行这个步骤，直到所有的输入序列都耗尽为止
+
+### 4.16 用迭代器取代while循环
+
+    采用while循环来迭代处理数据，因为这其中涉及调用某个函数或有某种不常见的测试条件，而这些东西没法归类为常见的迭代模式
+    在涉及I/O处理的程序中
+        CHUNKSIZE = 8192
+        def reader(s):
+            while True:
+                data = s.recv(CHUNKSIZE)
+                if data == b'':
+                    break
+                process_data(data)
+    这样的代码常常可以用iter()来替换
+
+    关于内建函数iter()，它可以选择性接受一个无参的可调用对象以及一个哨兵(结束)值作为输入。当以这种方式使用时，iter()会创建一个迭代器。然后重复调用用户提供的可调用对象，直到它返回哨兵值为止
+    这种特定的方式对于需要重复调用函数的情况，比如这些设计I/O的问题，有很好的效果。如果想从socket或文件中按块读取数据，通常会重复调用read()或者recv()，然后紧跟着检测是否到达文件末尾。通过将这两个功能合并为一个单独的iter()调用。
+
+## 第5章 文件和I/O
+
+    任何程序都需要处理输入和输出
+
+### 5.1 读写文本数据
+
+    需要对文本数据进行读写操作，但这个过程有可能针对不同的文本编码进行，比如ASCII、UTF-8或UTF-16编码
+    可以使用open()函数配合rt模式来读取文本文件的内容
+    要对文本文件执行写入操作，可以使用open()函数的wt模式来完成。如果待操作的文件已存在，那么这会清除并覆盖其原先的内容
+    如果要在已存在文件的结尾处追加内容，可以使用open()函数的at模式
+    默认情况下，文件的读取和写入采用的都是系统默认的文本编码方式，这可以通过sys.getdefaultencoding()来查询。在大多数机器上，这项设定都被设置为utf-8。如果知道正在读取或写入的文本采用的是另一种编码方式，那么可以为open()函数提供一个可选的编码参数
+        open('filename','rt',encoding='latin-1')
+    Python可以识别出几百种可能的文本编码。一些常见的编码方式不外乎是ascii、latin-1、utf-8以及utf-16。如果要同Web应用程序打交道，采用utf-8编码通常是比较保险的。ascii编码对应于范围U+000到U+007F中的7比特字符。latin-1编码则是字节0~255对Unicode字符U+0000到U+00FF的直接映射。关于latin-1编码，当读取到未知编码的文本时是不会产生解码错误的。以latin-1方式读取文件可能不会产生完全正确的解码文本，但是要从中提取出有用的数据仍然是足够的。如果稍后将数据重新写入到文件中，那么原始的输入数据将得到保留
+
+    一般来说，读写文本文件都是非常简单直接的。需要注意：采用with语句会为使用的文件创建一个上下文环境(context)。当程序的控制流程离开with语句块后，文件将自动关闭。如果不用with语句，要记得手动关闭文件
+    另一个细微的问题是关于换行符的识别，在UNIX和Windows上它们是不同的(即\n和\r\n之争)。默认情况下，Python工作在"通用型换行符"模式下。在该模式种，所有常见的换行格式都能识别出来。在读取时会将换行符转换成一个单独的\n字符
+    同样的，在输出时换行符\n会被转换为当前系统默认的换行符。如果不需要这种"翻译"行为，可以给open()函数提供一个newline=''的参数
+    关于文本文件中可能出现的编码错误，如果遇到这种错误，这通常表示没有以正确的编码方式来读取文件。应该仔细阅读要读取的文本的相关规范，并检查自己的操作是否正确(例如不要用latin-1编码方式读取，换成utf-8或者任何所需的编码方式)。如果还是有可能出现编码错误，则可以为open()函数提供一个可选的errors参数来处理错误
+        errors='replace'/'ignore'
+    如果常常在摆弄open()函数的encoding和errors参数，并为此做了大量的技巧性操作，那就适得其反了。关于文本，第一条守则就是只需要确保总是采用正确的文本编码形式即可。如果有疑问，就使用默认的编码设定
+
+### 5.2 将输出重定向到文件中
+
+    为print()函数加上关键字参数
+        with open("filename",'rt') as f:
+            print('Hello World!',file=f)
+    
+    需要确保文件是以文本模式打开的
+
+### 5.3 以不同的分隔符或行结尾符完成打印
+
+    在print()函数中使用sep和end关键字参数来根据需要修改输出
+        sep默认为" ",end默认为"\n"
+
+    除了空格之外，当还需要用其他字符来分隔文本时，通常在print()函数中通过sep关键字参数指定一个不同的分隔符。str.join也能实现同样的效果，但是只能处理字符串
+
+### 5.4 读写二进制数据
+
+    使用open()函数的rb或者wb模式就可以实现对二进制数据的读或写
+    当读取二进制数据时，所有的数据将以字节串的形式返回，而不是文本字符串。当写入二进制数据时，数据必须是以对象的形式来提供，而且该对象可以将数据以字节形式暴露出来(即字节串、bytearray对象等)
+
+    当读取二进制数据时，由于字节串和文本字符串之间存在微妙的语义差异，这可能会造成一些潜在的问题。在作索引和迭代操作时，字节串会返回代表该字节的整数值而不是字符串
+    如果需要在二进制文件中读取或写入文本内容，请确保要进行编码或解码操作
+    关于二进制I/O，像数组和C结构体这样的对象可以直接用来进行写操作，而不必先将其转换为byte对象
+        nums=array.array('i',[1,2,3,4])
+        with open('data.bin','wb) as f:
+            f.write(nums)
+    这种行为可适用于任何实现了所谓的"缓冲区接口"的对象。该接口直接将对象底层的内存缓冲区暴露给可用在其上进行的操作。写入二进制数据就是这样一种操作
+    有许多对象还支持直接将二进制数据读入到它们底层的内存中，只要使用文件对象的readinto()方法就可以了
+        a=array.array('i',[0,0,0,0,0,0,0,0])
+        with open('data.bin','rb')
+            f.readinto(a) #承接之前的操作
+    使用这项技术要小心，因为这常常是与平台特性相关的，而且可能依赖于字的大小和字节序(即大端和小端)等属性。
+
+### 5.5 对已不存在的文件执行写入操作
+
+    可以通过使用open()函数中的x模式替代常见的w模式来解决，只有文件不存在才能通过x模式打开
+    如果文件是二进制模式的，用xb模式替代xt
+
+    这样以一种优雅的方式解决了一个常会在写文件时出现的问题(意外地覆盖了某个已存在的文件)。另一种解决方案是首先检查文件是否已存在
+        if not os.path.exists('somefile'):
+    很明显，使用x模式更加简单直接。x模式是Python3中对open()函数的扩展。在早期的Python版本或者在Python的实现中用到的底层C函数库里都不存在这样的模式
+
+### 5.6 在字符串上执行I/O操作
+
+    使用io.StringIO()和io.BytesIO()类来创建类似于文件的对象，这些对象可操作字符串数据
+        s=io.StringIO()
+        s.write('Hello World\n')
+        print("This is test',file=s)
+        s.getvalue()
+        s.read(n)
+    io.StringIO类只能用于对文本的处理。如果要操作二进制数据，则使用io.BytesIO()
+
+    当出于某种原因需要模拟出一个普通文件时，这种情况下StringIO和BytesIO类是最为适用的。在单元测试中，可能会使用StringIO来创建一个文件型的对象，对象中包含了测试用的数据。之后可将这个对象发送给一个可以接受普通文件的函数
+    StringIO和BytesIO实例是没有真正的文件描述符来对应的。没法工作在一个真正的系统级文件例如文件、管道或套接字的代码环境中。 
+
+### 5.7 读写压缩的数据文件
+
+    gzip和bz2模块使得同这类压缩型文件打交道变得非常简单。这两个模块都提供了open()的其他实现，可用于处理压缩文件。要将压缩文件以文本形式读取
+        with gzip.open('somefile.gz','rt') as f:
+        with bz2.open('somefile.ba2','rt') as f:
+            text=f.read()
+            f.write(text)
+    以上所有的I/O操作都会采用文本形式并执行Unicode编码/解码操作。如果想处理二进制数据，则使用rb和wb形式
+
+    大部分情况下读写压缩数据都是简单而直接的。选择正确的模式非常重要，如果没有指定模式，那么默认的模式是二进制，会使得期望接受文本的程序崩溃。gzip.open()和bz2.open()所接受的参数与内建的open()函数一样，也支持encoding、errors、newline等关键字参数
+    当写入压缩数据时，压缩级别可通过compresslevel关键字参数来指定，这是可选的。
+    默认级别是9，代表着最高的压缩等级。低等级的压缩可带来更好的性能表现，但压缩比就没有那么大
+    gzip.open()和bz2.open()有一个较少提到的特性，即它们能够对已经以二进制模式打开的文件进行叠加操作
+    这种行为使得gzip和bz2模块可以同各种类型的类文件对象比如套接字、管道和内存文件一起工作
+
+### 5.8 对固定大小的记录进行迭代
+
+    可以利用iter()和functools.partial()来完成这个巧妙的技巧。
+        RECORD_SIZE = 32
+        with open('somefile.data','rb') as f:
+            records = iter(functools.partial(f.read,RECORD_SIZE),b'')
+    示例中的records对象是可迭代的，它会产生出固定大小的数据块直到到达文件结尾。如果文件大小不是记录大小的整数倍的话，那么最后产生出的那个数据块可能比所期望的字节数要少
+
+    关于iter()函数，如果传递一个可调用对象及一个哨兵值给他，那么它可以创建出一个迭代器。得到的迭代器会重复调用用户提供的可迭代对象，直到返回的值为哨兵值为止，此时迭代过程停止
+    functools.partial用来创建可调用对象，每次调用它时都从文件中读取固定的字节数。b''在这里用作哨兵值，当读取到文件结尾时就会返回这个值，此时迭代过程结束
+    对于读取固定大小的记录，几乎是最常见的情况。如果要针对二进制文件，按行读取(默认的迭代行为)更为普遍一些
+
+### 5.9 将二进制数据读取到可变缓冲区中
+
+    要将数据读取到可变数组中，使用文件对象的readinto()方法即可
+        def read_into_buffer(filename):
+            buf = bytearray(os.path.getsize(filename))
+            with open(filename,'rb') as f:
+                f.readinto(f)
+            return buf
+
+    文件对象的readinto()方法可用来将数据填充到任何预分配好的数组中，这包括array模块或者numpy这样的库所创建的数组。与普通的read()方法不同的是,readinto()是为已存在的缓冲区填充内容，而不是分配新的对象然后再将它们返回。可以用readinto()来避免产生额外的内存分配动作。读取一个由相同大小的记录所组成的二进制文件
+        RECORD_SIZE = 32
+        buf = bytearray(RECORD_SIZE)
+        with open('somefile','rb') as f:
+        while True:
+            n = f.readinto(buf)
+            if n < RECORD_SIZE:
+                break
+    这里用到的另一个有趣的特征应该就是内存映像了，它使得程序员可以对已存在的缓冲区做切片处理，但是中间不涉及任何拷贝动作，还可以修改它的内容
+        m1 = memoryview(buf)
+        m2 = m1[-5:]
+        m2[:] = b'WORLD'
+    使用f.readinto()需要注意的一点是，必须总是确保要检查它的返回值，即实际读取的字节数
+    如果字节数小于所提供的缓冲区大小，这可能表示数据被截断或遭到了破坏(如期望督导一个准确的字节数时)
+    可以在各种库模块找到那些带有'into'的函数(如recv_into()、pack_into()等)。Python中有许多模块都支持直接I/O访问，可用来填充或修改数组和缓冲区中的内容
+
+### 5.10 对二进制文件做内存映射
+
+    可以使用mmap模块实现对文件的内存映射操作。以可移植的方式打开一个文件并对它进行内存映射操作
+        def memory_map(filename,access=mmap.ACCESS_WRITE):
+            size = os.path.getsize(filename)
+            fd = os.open(filename,os.O_RDWR)
+            return mmap.mmap(fd,size,access=access)
+    要使用这个函数，需要准备一个已经创建好的文件并为之填充一些数据。创建一个初始文件，并将其扩展为所需要的大小
+        size = 1000000
+        with open('data','wb') as f:
+            f.seek(size-1)
+            f.write(b'\x00')
+    用memory_map()函数对文件内容做内存映射
+        m = memory_map('data')
+        len(m)
+        m[0:10]
+        m[0:11] = b'Hello World'
+        m.close()
+        with open('data','rb') as f:
+            print(f.read(11))
+    由mmap()返回的mmap对象也可以当作上下文管理器使用，在这种情况下，底层的文件会自动关闭
+        with memory_map('data') as m:
+            print(len(m))
+            print(m[0:10])
+        m.closed()
+    默认情况下，memory_map()函数打开的文件既可以读也可以写。对数据的任何修改都会拷贝回原始的文件中。如果需要只读访问，可以为access参数提供mmap.ACCESS_READ值
+    如果只想在本地修改数据，并不想将这些修改写回到原始文件中，可以使用mmap.ACCESS_COPY参数
+
+    通过mmap将文件映射到内存中后，能够以高效和优雅的方式对文件的内容进行随机访问。与其打开文件后通过组合各种seek()、read()和write()调用来访问，不如简单地将文件映射到内存，然后通过切片操作来访问数据
+    由mmap()暴露出的内存看起来就像一个bytearray对象。利用memoryview能够以不同的方式来解读数据
+    对某个文件进行内存映射并不会导致将整个文件读到内存中。文件并不会拷贝到某种内存缓冲区或数组上。操作系统只是为文件内容保存一段虚拟内存而已。当访问文件的不同区域时，文件的这些区域将被读取并按照需要映射到内存区域中。文件中从未访问过的部分会简单地留在磁盘上。这些操作以透明的方式在后台完成
+    如果有多个Python解释器对同一个文件做了内存映射，得到的mmap对象可用来在解释器之间交换数据。所有的解释器可以同时读写数据，在一个解释器中对数据做出的修改会自动反映到其他的解释器上。这里需要一些额外的步骤来处理同步问题，但是有时候可用这种方法作为通过管道或socket传输数据的替代方式
+    对于mmap()的使用，不同的平台上会存在一些差异。还有选项可用来创建匿名的内存映射区域
+
+### 5.11 处理路径名
+
+    需要处理路径名以找出基文件名、目录名、绝对路径等相关的信息
+    要操纵路径名，可以使用os.path模块中的函数。
+        os.path.basename(path)
+        os.path.dirname(path)
+        os.path.join("","",os.path.basename(path))
+        os.path.expanduser(path)
+        os.path.splitext(path)
+
+    对于任何需要处理文件名的问题，都应该使用os.path模块而不是通过使用标准的字符串操作来自己实现这部分功能。部分原因是为了考虑可移植性。os.path模块知道UNIX和Windows系统之间的一些差异，能够可靠地处理类似Data/data.csv和Data\data.csv这样的文件名。
+
+### 5.12 检测文件是否存在
+
+    可用通过os.path模块来检测某个文件或目录是否存在
+        os.path.exists(dirname)
+    之后可以执行进一步的测试来查明这个文件的类型。
+        os.path.isfile(name)
+        os.path.isdir(name)
+        os.path.islink(name)
+        os.path.realpath(name)
+    如果需要得到元数据(即文件大小或修改日期)，这些功能在os.path模块中也有提供
+        os.path.getsize(name)
+        os.path.getmtime(name)
+        time.ctime(os.path.getmtime(name))
+
+    利用os.path模块来对文件做检测是简单而直接的。在编写脚本时唯一需要注意的事情就是关于权限的问题——尤其是获取元数据的操作
+
+### 5.13 获取目录内容的列表
+
+    可以使用os.listdir()函数来获取目录中的文件列表
+        names = os.listdir(dirname)
+    这么做会得到原始的目录文件列表，包括所有的文件、子目录、符号链接等。如果需要以某种方式来筛选数据，可以考虑利用列表推导式结合os.path模块中的各种函数来完成
+        names = [name for name in os.listdir(dirname) if os.path.isfile(os.path.join(dirname,name))]
+        names = [name for name in os.listdir(dirname) if os.path.isdir(os.path.join(dirname,name))]
+    字符串的startswith()和endswith()方法对于筛选目录中的内容也同样有用
+    至于文件名的匹配，可以用glob或者fnmatch模块
+        pyfiles = glob.glob('somedir/*.py')
+        pyfiles = [name for naem in os.listdir(dirname) if fnmatch(name,'*.py')]
+
+    得到目录中内容的列表很简单，但只得到目录中每个条目的名称。如果想得到一些附加的元数据，比如文件大小、修订日期等，要么使用os.path模块中的其他函数，要么使用os.stat()函数。收集这些数据
+        pyfiles = glob.glob('somedir/*.py')
+        name_sz_date = [(name, os.path.getsize(name), os.path.getmtime(name)) for name in pyfiles]
+        file_metadata = [(name, os.stat(name)) for name in pyfiles]
+
+    请注意有关文件名编码时会出现一些微妙问题。一般来说，像os.listdir()这样的函数返回的条目都会根据系统默认的文件名编码方式来进行解码处理。有可能在特定的条件下会遇到无法解码的文件名
+
+### 5.14 绕过文件名编码
+
+    相对使用了原始文件名的文件执行I/O操作，这些文件名没有根据默认的文件名编码规则来解码或编码
+    默认情况下，所有的文件名都会根据sys.getfilesystemencoding()返回的文本编码形式进行编码和解码
+    如果基于某些原因想忽略这种编码，可以使用原始字节串来指定文件名
+        with open('Jalape\x1o.txt','w') as f:
+            f.write('Spicy')
+        os.listdir('.')
+        os.listdir(b'')
+        with open(b'jalapen\xcc\x83o.txt') as f:
+            print(f.read())
+    当给同文件相关的函数比如open()和os.listdir()提供字节串参数时，对文件名的处理就发生了微小的改变
+
+    一般情况下，不应该去担心有关文件名编码和解码的问题————普通的文件名操作应该能正常工作。有许多操作系统可能会允许用户通过意外或恶意的方式创建出文件名不遵守期望的编码规则的文件。这样a的文件名可能会使得处理大量文件的Python程序莫名其妙地崩溃
+    在读取目录和同文件名打交道时，以原始的未编码的字节作为文件名就可以避免这样的问题
+
+### 5.15 打印无法解码的文件名
+
+    当打印来路不明的文件名时，可以使用下面的方式来避免出现错误
+        def bad_filename(filename):
+            return repr(filename)[1:-1]
+        try:
+            print(filename)
+        except UnicodeEncodeError:
+            print(bad_filename(filename))
+
+    当程序必须去操纵文件系统时，默认情况下，Python假设所有的文件名都是根据sys.getfilesystemencoding()返回的编码形式进行编码的。某些文件系统不一定会强制执行这种编码约束，因此会允许文件以不恰当的编码方式来命名。某些用户可能会意外地创建出一个文件(如在某些有问题的代码中将不恰当的文件名传给open())
+    当执行类似os.listdir()这样的命令时，错误的文件名会使Python陷入窘迫的境地。一方面Python不能直接丢弃错误的名字，而另一方面它也无法将文件名转为合适的文本字符串。对于这个问题，Python的解决方案是在文件名中取出一个无法解码的字节值\xhh，将其映射到一个所谓的"代理编码"中，代理编码由Unicode字符\udchh来表示。
+    如果代码只是用来操纵文件名或者甚至是将文件名传递给函数(如open())，一切都能正常工作。只有当想把文件名输出时才会陷入麻烦(即打印到屏幕、记录到日志上等)。如果试着打印，程序就会崩溃
+    崩溃的原因在于字符\udce4不是合法的Unicode字符。实际上是2字符组合的后半部分，这个组合称为代理对。由于前半部分丢失了，因此是非法的Unicode。唯一能成功产生输出的方式是，当遇到有问题的文件名时采取纠正措施。
+    函数bad_filename()要实现什么功能很大程度取决于需求。
+        def bad_filename(filename):
+            temp = filename.encode(sys.getfilesystemencoding(),errors='surrogateescape')
+            return temp.decode('latin-1')
+    如果要编写完成关键任务的脚本，需要可靠地与文件名以及文件系统打交道。
+
+### 5.16 为已经打开的文件添加或修改编码方式
+
+    为一个已经打开的文件添加或修改Unicode编码，但不必首先将其关闭
+    如果想为一个以二进制模式打开的文件对象添加Unicode编码/解码，可以用io.TextIOWrapper()对象将其包装
+        u=urllib.request.urlopen('http://www.python.org')
+        f=io.TextIOWrapper(u,encoding='utf-8')
+        text=f.read()
+    如果想修改一个已经以文本模式打开的文件的编码方式，可以在用新的编码替换之前的编码前，用detach()方法将已有的文本编码层移除。
+        sys.stdout.encoding
+        sys.stdout = io.TextIOWrapper(sys.stdout.detach(),encoding='latin-1')
+    这么做可能会破坏终端上的输出
+
+    I/O系统是以一系列的层次来构建的。
+        f=open('sample.txt','w')
+        f #<_io.TextIOWrapper name='sample.txt' mode='w' encoding='cp936'>
+        f.buffer #<_io.BufferedReader name='sample.txt'>
+        f.buffer.raw #<_io.FileIO name='sample.txt' mode='wb' closefd=True>
+    io.TextIOWrapper是一个文本处理层，它负责编码和解码Unicode。而io.BufferedWriter是一个缓冲I/O层，负责处理二进制数据。io.FileIO是一个原始文件，代表着操作系统底层的文件描述符。添加或修改文本的编码设计添加或修改最上层的io.TextIOWrapper层
+    作为一般的规则，直接通过访问上面展示的属性来操作不同的层次是不安全的。如果用这种技术来修改编码
+        f = io.TextIOWrapper(f.buffer,encoding='latin-1')
+        f.write('Hello')
+    这样的操作无效，因为f之前的值已经被销毁，在这个过程中导致底层的文件被关闭
+    detach()方法将最上层的io.TextIOWrapper层同文件分离开来，并将下一个层次(io.BufferedWriter)返回。在这之后，最上层将不再起作用。
+    一旦完成分离，就可以为返回的结果添加一个新的最上层
+    同样可以利用这层技术来修改文本行的处理、错误处理机制以及其他有关处理方面的行为
+        sys.stdout = io.TextIOWrapper(sys.stdout.detach(),encoding='ascii',errors='xmlcharrefreplace')
+        print('Jalape\u00f1o)
+    非ASCII字符已经被替代了
+
+### 5.17 将字节数据写入文本文件
+
+    只需要简单地将字节数据写入到文件底层的buffer中就可以了
+        sys.stdout.write(b'Hello\n')
+        sys.stdout.buffer.write(b'Hello\b')
+    同样也可以从文本文件中读取二进制数据，只要通过buffer属性来读取即可
+
+    I/O系统是以不同的层次来构建的。文本文件是通过在缓冲的二进制模式文件之上添加一个Unicode编码/解码层来构建的。buffer属性简单地指向底层的文件。如果访问该属性，就可以绕过文本编码/解码层了
+    默认情况下，sys.stdout总是以文本模式打开的。但如果要编写一个需要将二进制数据转储到标准输出的程序，就可以使用这种方法
+
+### 5.18 将已有的文件描述符包装为文件对象
+
+    有一个以整数值表示的文件描述符，已经同操作系统中已打开的I/O通道建立起了联系(即文件、管道、socket等)。而希望以高级的Python文件对象来包装这个文件描述符
+    文件描述符与一般打开的文件相比是有区别的。文件描述符只是一个由操作系统分配的整数句柄，用来指代某种系统I/O通道。如果刚好有这样一个文件描述符，就可以通过open()函数用Python文件对象对其进行包装。只需要将整数形式的文件描述符作为第一个参数取代文件名就可以了。
+        fd = os.open('somefile.txt',os.O_WRONLY | os.O_CREAT)
+        f = open(fd,'wt')
+        f.write('hello world\n')
+        f.close()
+    当高层的文件对象被关闭或销毁时，底层的文件描述符也会被关闭。如果不想要这种行为，只需给open()提供一个可选的closefd=False参数即可
+        f = open(fd,'wt',closefd=False)
+
+    在UNIX系统上，这种包装文件描述符的技术可以用来方便地对以不同方式打开的I/O通道(即管道、socket等)提供一个类似于文件的接口。
+
+    ```Python
+    from socket import socket,AF_INET,SOCK_STREAM
+    def echo_client(client_sock,addr):
+        print("Got Connection from",addr)
+        client_in=open(client_sock.fileno(),'rt',encoding='latin-1',closefd=False)
+        client_out=open(client_sock.fileno(),'wt',encoding='latin-1',closefd=False)
+        for line in client_in:
+            client_out.write(line)
+            client_out.flush()
+        client_sock.close()
+    def echo_server(address):
+        sock=socket(AF_INET,SOCK_STREAM)
+        sock.bind(address)
+        sock.listen(1)
+        while True:
+            client,addr=sock.accept()
+            echo_client(client,addr)
+    ```
+    以上例子只是用来说明内建的open()函数的一种特性，而且只能工作在基于UNIX的系统之上。如果想在socket上加上一个类似文件的接口，并且需要做到跨平台，那么就应该使用socket的makefile()方法来替代。如果不需要考虑可移植性的话，就会发现上面给出的解决方案在性能上要比makefile()高出不少
+    也可以利用这项技术为一个已经打开的文件创建一种别名，使得它的工作方式能够稍微区别于首次打开时的样子。以下代码创建一个文件对象，使得它能够在stdout上产生出二进制数据(通常stdout是以文本模式打开的)
+        bstdout = open(sys.stdout.fileno(),'wb',closefd=False)
+        bstdout.write(b'Hello World\n')
+        bstdout.flush()
+    尽管可以将一个已存在的文件描述符包装成一个合适的文件，但是并非所有的文件模式都可以得到支持，而且某些特定类型的文件描述符可能还带有有趣的副作用(尤其是在面对错误处理、文件结尾的情况时)。具体的行为也可能因为操作系统的不同而有所区别。以上代码只能在UNIX系统上工作。最基本的底线就是需要对自己的实现进行彻底的测试，确保代码能够按照期望的方式工作
+
+### 5.19 创建临时文件和目录
+
+    当程序运行时，需要创建临时文件或目录以便使用。在这之后进行销毁
+    tempfile模块中有各种函数可以用来完成这个任务。要创建一个未命名的临时文件，可以使用tempfile.TemporaryFile
+        from tempfile import TemporaryFile
+        with TemporaryFile('w+t') as f:
+            f.write('Hello World\n')
+            f.write('Testing\n')
+            f.seek(0)
+            data=f.read()
+    TemporaryFile()的第一个参数是文件模式，通常以w+t处理文本模式而以w+b处理二进制数据。这个模式可同时支持读写，在这里是很有用的，因为关闭文件后再来修改模式实际上会销毁文件对象。TemporaryFile()也可以接受和内建的open()函数一样的参数
+    在大多数UNIX系统上，由TemporaFile()创建的文件都是未命名的，而且在目录中也没有对应的条目。如果想解放这种限制，可以使用NamedTemporaryFile()来替代。
+        from tempfile import NamedTemporaryFile
+        with NamedTemporaryFile('w+t') as f:
+            print('filename is',f.name)
+    要创建一个临时目录，可以使用tempfile.TemporaryDirectory()来实现
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as dirname:
+            print('dirname is:',dirname)
+
+    要和临时文件还有临时目录打交道，最方便的方式就是使用TemporaryFile()、NamedTemporaryFile()以及TemporaryDirectory()这三个函数。因为它们能自动处理有关创建和清除的所有步骤。从较低的层次看，也可以使用mkstemp()和msdtemp()来创建临时文件和目录
+    但这些函数并不会进一步去处理文件管理的任务。mkstemp()函数只是简单地返回一个原始的操作系统文件描述符，然后自行转换为一个合适的文件。如果想将文件清理掉的话，这个任务也是自己完成
+    一般情况下，临时文件都是在系统默认的区域中创建的，比如/var/tmp或者类似的地方。要找出实际的位置，可以使用tempfile.gettempdir()函数。
+    所有同临时文件相关的函数都允许使用prefix、suffix和dir关键字参数来覆盖目录
+    在可能的范围内，tempfile模块创建的临时文件都是以最安全的方式来进行的。这包括只为当前用户提供可访问的权限，并且在创建文件时采取了相应的步骤来避免出现竞态条件。在不同的平台下这可能会有一些区别。
+
+### 5.20 同串口进行通信
+
+    通过串口读取和写入数据，典型情况下是同某种硬件设备进行交互(即机器人或传感器)
+    可以直接通过Python内建的I/O原语来完成这个任务，但对于串口通信来说，使用pySerial包比较好。这个包使用起来较为简单，打开一个串口
+        ser = serial.Serial('COM3',baudrate=9600,bytesize=8,parity='N',stopbits=1)
+    设备名称可能会根据设备的类型和操作系统而有所不同。在Windows上，可以使用0、1这样的数字代表设备来打开通信端口，比如"COM0"和"COM1"。一旦打开后，就可以通过read()、readline()和write()调用来写数据
+        ser.write(b'G1 X50 Y50\r\n')
+        resp = ser.readline()
+    大部分情况下的串口通信任务应该是非常简单的
+
+    但串口通信常常会变得相当混乱。应该使用一个像pySerial这样的包的原因就在于它对一些高级特性提供了支持(即超时处理、流控、刷新缓冲区、握手机制等)。比如，如果想开启RTS-CTS助手，只要简单地为Serial()提供一个rtscts=True关键字参数即可。
+    所有涉及串口的I/O操作都是二进制的。确保在代码中使用的是字节而不是文本(或者根据需要执行适当的文本编码/解码操作)。当需要创建以二进制编码的命令或者数据包时，struct模块也会起到不少作用
+
+### 5.21 序列化Python对象
+
+    需要将Python对象序列化为字节流，便可将其保存到文件中、存储到数据库中或者通过网络连接进行传输
+    序列化数据最常见的做法就是使用pickle模块。要将某个对象转储到文件中
+        data = ... #some Python object
+        f = open('somefile','wb')
+        pickle.dump(data,f)
+    要将对象转储为字符串，可以使用pickle.dumps()
+        s=pickle.dumps(data)
+    如果要从字节流中重新创建出对象，可以使用pickle.load()或者pickle.loads()函数
+        f=open('somefile','rb')
+        data=pickle.load(f)
+        data=pickle.loads(s)
+
+    对于大部分程序来说，只要掌握dump()和load()函数的用法就可以高效地利用pickle模块了。pickle模块能够兼容大部分Python数据类型和用户自定义的类实例。如果正在使用的库可以保存/恢复Python对象到数据库中，或者通过网络传输对象，很有可能就在使用pickle
+    pickle是一种Python专有的自描述式的数据编码。称为自描述，是因为序列化的数据中包含有每个对象的开始和结束以及有关对象类型的信息。处理多个对象
+        f=open('somedata','wb')
+        pickle.dump([1,2,3,4],f)
+        pickle.dump('hello',f)
+        pickle.dump({'Apple','Pear','Banana'},f)
+        f.close()
+        f=open('somedata','rb')
+        pickle.load(f) # for 4 times
+    可以对函数、类以及实例进行pickle处理，但由此产生的数据只会对代码对象所关联的名称进行编码
+        pickle.dumps(math.cos)
+    当对数据做反序列化处理时，会假设所有所需的源文件都是可用的。模块、类以及函数会根据需要自动导入。对于需要在不同机器上的解释器之间共享Python数据的应用，这会成为一个潜在的维护性问题，因为所有的机器都必须能够访问到相同的源代码
+    绝对不能对非受信任的数据使用pickle.load()。由于会产生副作用，pickle会自动加载模块并创建实例。了解pickle是如何运作的骇客可以故意创建出格式不正确的数据，使得Python解释器有机会去执行任意的系统命令。有必要将pickle限制为只在内部使用，解释器和数据之间要能够彼此验证对方
+    某些特定类型的对象是无法进行pickle操作的。这些对象一般来说都会涉及某种外部系统状态，比如打开的文件、打开的网络连接、线程、进程、栈帧等。用户自定义的类有些时候可以通过__getstate__()和__setstate__()方法来规避这些规则。如果定义了这些方法，pickle.dump()就会调用__getstate__()来得到一个可以被pickle处理的对象。在unpickle的时候就会调用__setstate__()来得到一个可以被pickle处理的对象。在unpickle的时候就会调用__setstate__()了。下面这个类在内部定义了一个线程，但是仍然可以进行pickle/unpickle操作
+
+    ```Python
+    import time,threading
+    class Countdown:
+        def __init__(self,n):
+            self.n=n
+            self.thr=threading.Threading(target=self.run)
+            self.thr.daemon=True
+            self.thr.start()
+        def run(self):
+            while self.n>0:
+                print('T-minus',self.n)
+                self.n-=1
+                time.sleep(5)
+        def __getstate__(self):
+            return self.n
+        def __setstate__(self,n):
+            self.__init___(n)
+    c=countdown.Countdown(30)
+    f=open('cstate.p','wb')
+    import pickle
+    pickle.dump(c,f)
+    f.close()
+    f=open('cstate.p','rb')
+    pickle.load(f)
+    ```
+    这样线程从上次执行pickle操作时剩下的计数开始执行
+    对于大型的数据结构，比如由array模块或numpy库创建的二进制数组，pickle就不是一种特别高效的编码。如果需要一定大量的数组型数据，那么最好简单地将数据按块保存在文件中，或者使用更加标准的编码，比如HDF5(由第三方库支持)
+    由于pickle是Python的专有特性，而且同源代码的关联紧密，因此不应该把pickle作为长期存储的格式。如果源代码发生改变，那么存储的所有数据就会失效且变得无法读取。
+    要将数据保存在数据库和归档存储中，最好使用一种更加标准的数据编码，比如XML、CSV或者JSON。这些编码格式的标准化程度更高，许多编程语言都支持，而且更能适应于源代码的修改
+    pickle模块中有着大量的选项。对于大部分常见的用途，不必担心。如果要构建一个大型的应用，其中要用pickle来做序列化的话，就需要参考官方文档。
+
+## 第六章 数据编码与处理
+
+    利用Python来处理以各种常见编码形式所呈现出的数据，比如CSV文件、JSON、XML以及二进制形式的打包记录。与数据结构不同，将会着重处理数据在程序中的输入和输出问题
+
+### 6.1 读写CSV数据
+
+    对于大部分类型的CSV数据，都可以用csv库来处理。假设在名为stocks.csv的文件中包含有如下的股票市场数据
+    Symbol,Price,Date,Time,Change,Volume
+        "AA",39.48,"6/11/2007","9:36am",-0.18,181800
+        ...
+        import csv
+        with open('stock.csv') as f:
+            f_csv=csv.reader(f)
+            headers=next(f_csv)
+            for row in f_csv:
+                # process row
+    在上面的代码中，row将会是一个元组。要访问特定的字段就需要用到索引，比如row[0](表示Symbol)和row[4](表示Change)
+    由于这样的索引常常容易引起混淆，可以考虑使用命名元组
+        from collections import namedtuple
+        import csv
+        with open('stock.csv') as f:
+            f_csv=csv.reader(f)
+            headings=next(f_csv)
+            Row=namedtuple('Row',headings)
+            for r in f_csv:
+                row=Row(*r)
+                # process row
+    这样就可以使用每一列的标头比如row.Symbol和row.Change来取代之前的索引了。应该要指出的是，这个方法只有在每一列的表头都是合法的Python标识符时才起作用
+    如果不是的话，就必须调整原始的标头(如把非标识符字符用下划线或其他类似的符号取代)
+    另一种可行的方式是将数据读取为字典序列
+        import csv
+        with open('stocks.csv') as f:
+            f_csv=csv.DictReader(f)
+            for row in f_csv:
+                # process row
+    在这个版本中，可以通过行表头来访问每行中的元素。比如row['Symbol']或者row['Change']
+    要写入CSV数据，也可以使用csv模块来完成，但是要创建一个写入对象
+        headers=['Symbol','Price','Date','Time','Change',Volume']
+        rows=[("AA",39.48,"6/11/2007","9:36am",-0.18,181800)
+            ...]
+        with open('stocks.csv') as f:
+            f_csv=csv.writer(f)
+            f_csv.writerow(headers)
+            f_csv.writerows(rows)
+    如果数据是字典序列，处理方式则为
+        with open('stocks.csv') as f:
+            f_csv=csv.DictWriter(f,headers)
+            f_csv.writeheader()
+            f_csv.writerows(rows)
+
+    应该总是选择使用csv模块来处理，而不是自己手动分解和解析CSV数据。
+    手动通过spilt的方式，问题在于需要处理一些细节问题。如果有任何字段是被引号括起来的，就要继续去除引号。如果被引用的字段中恰好包含有一个逗号，产生出的那一行会因为大小错误而使得代码崩溃(因为原始数据也是用逗号分隔的)
+    默认情况下,csv库被实现为能够识别微软Excel所采用的CSV编码规则。这也许是最为常见的CSV编码规则了，能够带来最佳的兼容性。如果查阅csv的文档，就会发现有几种方法可以将编码微调为其他的格式(如修改分隔字符等)。如果想读取以tab键分隔的数据
+        with open('stocks.csv') as f:
+            f_tsv=csv.reader(f,delimiter='\t')
+            for row in f_tsv:
+                # process row
+    如果正在读取CSV数据并将其转换为命名元组，那么在验证列标题时要小心。某个CSV文件中可能在标题行中包含有非法的标识符字符，Num=Premises中的-不能用作Python的标识符字符
+        Street Adress,Num-Premises,Latitude,Longitude
+    这会使得创建命名元组的代码出现ValueError异常。要解决这个问题，应该首先整理标题。可以对非法的标识符字符进行正则替换
+        import re
+        with open('stocks.csv') as f:
+            f_csv=csv.reader(f)
+            headers=[re.sub('[^a-zA-Z_]','_',h) for in next(f_csv)]
+            Row=namedtuple('Row',headers)
+            for r in f_csv:
+                row=Row(*r)
+                # process row
+    csv模块不会尝试去解释数据或者将数据转换为除字符串之外的类型。如果需要转换，则手动进行处理。
+        col_types=[str,float,str,str,float,int]
+        with open('stocks.csv') as f:
+            f_csv=csv.reader(f)
+            headers=next(f_csv)
+            for row in f_csv:
+                row=tuple(convert(value) for convert,value in zip(col_types,row))
+    一般来说，对于这样的转换需要小心。CSV文件可能会缺少某些值，或者数据损坏，以及出现其他一些可能会使数据转换操作失败的情况，这都是很常见的。除非可以保证数据不会出错，否则需要考虑这些情况(可能需要加上适当的异常处理代码)
+    如果目标是通过读取CSV数据来进行数据分析和统计，Pandas中有个方便的函数pandas.read_csv()，能够将CSV数据加载到DataFrame对象中。就可以生成各种各样的统计摘要，还可以对数据进行筛选并执行其他类型的高级操作。
+
+### 6.2 读写JSON数据
+
+    json模块中提供了一种简单的方法来编码和解码JSON格式的数据。这两个主要的函数就是json.dumps()以及json.loads()。这两个函数在命名上借鉴了其他序列化处理库的接口，比如pickle。将Python数据转换为JSON
+        import json
+        data={
+            'name':'ACME',
+            'shares':100,
+            'price':542.23
+        }
+        json_str=json.dumps(data)
+    把JSON编码的字符串转换回Python数据结构
+        data=json.loads(json_str)
+    如果要同文件而不是字符串打交道的话，可以选择使用json.dump()以及json.load()来编码和解码JSON数据
+        with open('data.json','w') as f:
+            json.dump(data,f)
+        with open('data.json','w') as f:
+            data=json.load(f)
+
+    JSON编码支持的基本类型有None、bool、int、float和str，以及包含了这些基本类型的列表、元组以及字典。对于字典，JSON会假设键是字符串(字典中任何非字符串键都会在编码时转换为字符串)。要符合JSON规范，应该只对Python列表和字典进行编码。在Web应用中，把最顶层对象定义为字典是一种标准做法
+    JSON编码的格式几乎与Python语法一致。True会被映射为true，False会被映射为false，而None会被映射为null。
+    如果要检查从JSON中解码得到的数据，仅仅将其打印出来很困难确定数据的结构————尤其是如果数据中包含了深层次的嵌套结构或者有许多字段时。可以考虑使用pprint模块中的pprint()函数。这么做会把键按照字母顺序排列，并且将字典以更加合理的方式进行输出
+
+    ```Python
+    # 对网站上的搜索结果以漂亮的格式进行输出
+    from urllib.request import urlopen
+    import json
+    u=urlopen('web')
+    resp=json.loads(u.read(),decode('utf-8'))
+    from pprint import pprint
+    pprint(resp)
+    ```
+    一般来说，JSON解码时会从所提供的数据中创建出字典或者列表。如果想创建其他类型的对象，可以为json.loads()方法提供object_pairs_hook或者object_hook参数。将JSON数据解码为OrderedDict(有序字典)，这样可以保持数据的顺序不变
+        s='{"name":"ACME","shares":50,"price":490.1}'
+        from collections import OrderedDict
+        data=json.loads(s,object_pairs_hook=OrderedDict)
+        data
+    将JSON字典转变为Python对象
+        class JSONObject:
+            def __init__(self,d):
+                self.__dict__=d
+        data=json.loads(s,object_hook=JSONObject)
+        data.name,data.shares,data.price
+    这部分代码，通过解析JSON数据而创建的字典作为单独的参数传递给了__init__()。之后可以根据需要使用，如直接将它当作对象的字典实例
+    有几个选项对于编码JSON来说很有用。如果想让输出格式变得漂亮些，可以在json.dumps()函数中使用indent参数。这会使得数据能够像pprint()函数那样以漂亮的格式打印出来
+        print(json.dumps(data,indent=4))
+    如果想在输出中对键进行排序处理，可以使用sort_keys参数
+        print(json.dumps(data,sort_keys=True))
+    类实例一般是无法序列化为JSON的。
+    如果想序列化实例，可以提供一个函数将类实例作为输入并返回一个可以被序列化处理的字典
+        def serialize_instance(obj):
+            d={'__classname__':type(obj).__name__}
+            d.update(vars(obj))
+            return d
+    如果想取回一个实例
+
+    ```Python
+    class Point:
+        def __init__(self,x,y):
+            self.x=x
+            self.y=y
+    def unserialize_object(d):
+        clsname=d.pop('__classname__',None)
+        if clsname:
+            cls=classes[clsname]
+            obj=cls.__new__(cls)
+            for key,value in d.items():
+                setattr(obj,key,value)
+            return obj
+        else:
+            return d
+    classes={
+        'Point':Point
+    }
+    p=Point(2,3)
+    s=json.dumps(p,default=serialize_instance)
+    a=json.loads(s,object_hook=unserialize_object)
+    a,a.x,a.y
+    ```
+    json模块中还有许多其他的选项，这些选项可用来控制对数字、特殊值(比如NAN)等的底层解释行为
+
+### 6.3 解析简单的XML文档
+
+    xml.etree.ElementTree模块可用来从简单的XML文档中提取出数据。假设相对Planet Python上的RSS订阅做解析并生成一个总结报告
+        from urllib.request import urlopen
+        from xml.etree.ElementTree import parse
+        u=urlopen('http://planet.python.org/rss20.xml')
+        doc=parse(u)
+        for item in doc.iterfind('channel/item'):
+            title=item.findtext('title')
+            date=item.findtext('pubDate')
+            link=item.findtext('link')
+            print(title)
+            print(date)
+            print(link)
+            print()
+    如果想要做更多的处理，就需要将print()函数替换为其他更加有趣的处理函数
