@@ -742,7 +742,7 @@
     以字节串作为目录名从而导致产生的名称以未经编码的原始字节形式返回。在显示目录内容时，文件名包含了原始的UTF-8编码。
     可能会因为性能上有可能得到略微提升而倾向于将字节串作为文本字符串的替代来使用。尽管操纵字节确实要比文本来的略微高效一些(由于同Unicode相关的固有开销较高)，但这么做通常会导致非常混乱和不符合语言习惯的代码。常会发现字节串和Python中许多其他部分并不能很好地相容，这样为了保证结果的正确性，只能手动去执行各种各样的编码/解码操作。
 
-## 第三章 数值、日期和时间
+## 第3章 数值、日期和时间
 
     在Python中使用整数和浮点数进行数值计算较为简单。但是，如果需要使用分数、矩阵或者日期时间，就需要额外的工作
 
@@ -830,7 +830,7 @@
 ### 3.5 从字节串中打包和解包大整数
 
     需要将字节串解包为一个整型数值、将一个大整数重新转换为一个字节串
-    要将字节解释为整数，可以使用int.from_bytes()，然后指定字节序
+    ��������将字节解释为整数，可以使用int.from_bytes()，然后指定字节序
         ex: int.from_bytes(data,'little'/'big') # 小端法，大端法
     要将一个大整数重新转换为字节串，可以使用int.to_bytes()方法，只要指定字节数和字节序即可
 
@@ -1029,7 +1029,7 @@
     在同时区打交道时，一个常见的问题是如何知道时区的名称。要找出时区名称，可以考察一下pyzt.country_timezones，这是一个字典，可以使用ISO 3166国家代码作为key来查询
     根据PEP 431的描述，为了增强对时区的支持pyzt模块可能将不再建议使用。(但仍建议使用UTC时间等)
 
-## 第四章 迭代器和生成器
+## 第4章 迭代器和生成器
 
     迭代是Python中最强有力的特性之一。从高层次看，可以简单地把迭代看作是一种处理序列中元素的方式。但还可以创建自己的可迭代对象，在itertools模块中选择实用的迭代模式、构建生成器等。
 
@@ -1689,7 +1689,7 @@
             echo_client(client,addr)
     ```
     以上例子只是用来说明内建的open()函数的一种特性，而且只能工作在基于UNIX的系统之上。如果想在socket上加上一个类似文件的接口，并且需要做到跨平台，那么就应该使用socket的makefile()方法来替代。如果不需要考虑可移植性的话，就会发现上面给出的解决方案在性能上要比makefile()高出不少
-    也可以利用这项技术为一个已经打开的文件创建一种别名，使得它的工作方式能够稍微区别于首次打开时的样子。以下代码创建一个文件对象，使得它能够在stdout上产生出二进制数据(通常stdout是以文本模式打开的)
+    也可以利用这项技术为一个已经打开的文件创建一种别名，使得它的工作方式能够稍微区别于首次打开时的样子。以下代码创建一个文件对象，���得���能���在stdout上产生出二进制数据(通常stdout是以文本模式打开的)
         bstdout = open(sys.stdout.fileno(),'wb',closefd=False)
         bstdout.write(b'Hello World\n')
         bstdout.flush()
@@ -1794,7 +1794,7 @@
     要将数据保存在数据库和归档存储中，最好使用一种更加标准的数据编码，比如XML、CSV或者JSON。这些编码格式的标准化程度更高，许多编程语言都支持，而且更能适应于源代码的修改
     pickle模块中有着大量的选项。对于大部分常见的用途，不必担心。如果要构建一个大型的应用，其中要用pickle来做序列化的话，就需要参考官方文档。
 
-## 第六章 数据编码与处理
+## 第6章 数据编码与处理
 
     利用Python来处理以各种常见编码形式所呈现出的数据，比如CSV文件、JSON、XML以及二进制形式的打包记录。与数据结构不同，将会着重处理数据在程序中的输入和输出问题
 
@@ -1968,3 +1968,160 @@
             print(link)
             print()
     如果想要做更多的处理，就需要将print()函数替换为其他更加有趣的处理函数
+
+    在许多应用中，同XML编码的数据打交道是很常见的事情。这儿不仅是因为XML作为一种数据交换格式在互联网中使用广泛，而且XML还是用来保存应用数据(例如文字处理、音乐库等)的常用格式。
+    在许多情况下，XML如果只是简单地用来保存数据，那么文档结构就是紧凑而直接的。前面的RSS订阅源就类似于XML文档
+    xml.etree.ElementTree.parse()函数将整个XML文档解析为一个文档对象。然后就可以利用find()、iterfind()以及findtext()方法查询特定的XML元素。这些函数的参数就是特定的标签名称
+    当指定标签时，需要整体考虑文档的结构。每一个查找操作都是相对于一个起始元素来展开的。提供给每个操作的标签名也是相对于起始元素的。
+    每个由ElementTree模块所表示的元素都有一些重要的属性和方法，它们对解析操作十分有用。tag属性中包含了标签的名称，text属性中包含有附着的文本，而get()方法可以用来提取出属性(如果有的话)
+    xml.etree.ElementTree并不是解析XML的唯一选择。对于更加高级的应用，应该考虑使用lxml。lxml采用的编程接口和ElementTree一样。只需要将第一个导入语句修改为from lxml.etree import parse接口。lxml完全兼容于XML标准。lxml运行起来非常快速，还提供验证、XSLT以及XPath这样的功能支持
+
+### 6.4 以增量方式解析大型XML我呢见
+
+    从一个大型的XML文档中提取出数据，而且对内存的使用要尽可能少
+    任何时候，当要面对以增量方式处理数据的问题时，都应该考虑使用迭代器和生成器。
+
+    ```python
+        from xml.etree.ElementTree import iterparse
+        def parse_and_remove(filename,path):
+            path_parts=path.split('/')
+            doc=iterparse(filename,('start','end'))
+            # Skip the root element
+            next(doc)
+            tag_stack=[]
+            elem_stack=[]
+            for event,elem in doc:
+                if event == 'start':
+                    tag_stack.append(elem.tag)
+                    elem_stack.append(elem)
+                elif event == 'end':
+                    if tag_stack == path_parts:
+                        yield elem
+                        elem_stack[-2].remove(elem)
+                    try:
+                        tag_stack.pop()
+                        elem_stack.pop()
+                    except IndexError:
+                        pass
+    ```
+    要测试这个函数，只需要找一个大型的XML文件来配合测试即可。这种大型的XML文件常常可以在政府以及数据公开的网站上找到。
+    编写根据坑洞的数量对邮政编码(ZIP code)进行排序的脚本
+
+    ```Python
+    from xml.etree.ElementTree import parse
+    from collections import Counter
+    potholes_by_zip=Counter()
+    doc=parse('potholes.xml')
+    for pothole in doc.iterfind('row/row'):
+        potholes_by_zip[pothole.findtext('zip')]+=1
+    for zipcode,num in potholes_by_zip.most_common():
+        print(zipcode,num)
+    ```
+    这个脚本唯一的问题就是它将整个XML文件都读取到内存中后再做解析。进行微小的修改
+
+    ```Python
+    from collections import Counter
+    potholes_by_zip=Counter()
+    data=parse_and_remove('potholes.xml','row/row')
+    for pothole in data:
+        potholes_by_zip[pothole.findtext('zip')]+=1
+    for zipcode,num in potholes_by_zip.most_common():
+        print(zipcode,num)
+    ```
+
+    示例依赖于ElementTree模块中的两个核心功能。iterparse()方法允许对XML文档做增量式的处理。要使用它，只需提供文件名以及一个事件列表即可。事件列表由1个或多个start/end，start-ns/end-ns组成。iterparse()创建出的迭代器产生出形式为(event,elem)的元组，这里的event是列出的事件，而elem是对应的XML元素
+    当某个元素首次被创建但是还没有填入任何其他数据时(比如子元素)，会产生start事件，而end事件会在元素已经完成时产生。start-ns和end-ns事件是来处理XML命名空间声明的
+    在实例中，start和end事件是用来管理元素和标签栈的。这里的栈代表着文档结构中被解析的当前层次(current hierarchical)，同时也用来判断元素是否匹配传递给parse_and_ramove()函数的请求路径。如果有匹配满足，就通过yield将其发送给调用者。紧跟在yield之后的语句就是使得ElementTree能够高效利用内存的关键所在
+        elem_stack[-2].remove(elem)
+    这将之前通过yield产生出的元素从它们的父节点中移除。可假设其再也没有任何其他的引用存在，因此该元素被销毁进而可以回收它所占用的内存
+    这种迭代式的解析以及对节点的移除使得对整个文档的增量式扫描变得非常高效。在任何时刻都能构造出一颗完整的文档树。仍然可以编写代码以直接的方式来处理XML数据
+    这种技术的主要缺点就是运行时的性能。运行速度会快一倍，但是使用的内存是60多倍
+
+### 6.5 将字典转换为XML
+
+    尽管xml.etree.ElementTree库通常用来解析XML文档，但它同样也可以用来创建XML文档
+
+    ```Python
+    from xml.etree.ElementTree import Element
+    def dict_to_xml(tag,d):
+        '''
+        Turn a simple dict of key/value pairs into XML
+        '''
+        elem=Element(tag)
+        for key,val in d.items():
+            child=Element(key)
+            child.text=str(val)
+            elem.append(child)
+        return elem
+    s={'name':'GOOG','shares':100,'price':490.1}
+    e=dict_to_xml('stock',s)
+    from xml.etree.ElementTree import tostring
+    tostring(e)
+    ```
+    如果想为元素附加上属性，可以使用set()方法实现
+        e.set('_id','1234')
+    如果需要考虑元素间的顺序，可以创建OrderedDict来取代普通的字典。
+
+    当创建XML时，也许或倾向于只是用字符串来完成
+
+    ```Python
+    def dict_to_xml_str(tag,d):
+        '''
+        Turn a simple dict of key/value pairs into XML
+        '''
+        parts=['<{}>'.format(tag)]
+        for key,val in d.items():
+            parts.append('<{0}>{1}</{0}>'.format(key,val))
+        parts.append('</{}>'.format(tag))
+        return ''.join(parts)
+    ```
+    但如果有特殊字符，可能会被取代
+    如果需要手工对这些字符做转义处理，可以使用xml.sax.saxutils中的escape()和unescape()函数
+    创建Element实例要比使用字符串更为优越，除了可以产生出正确的输出外，可以更加方便地将Element实例组合在一起，创建出更大的XML文档。得到的Element实例也能够以各种方式进行处理。以更高的层面上对数据进行各种处理，最后只需要把结果作为字符串输出
+
+### 6.6 解析、修改和重写XML
+
+    xml.etree.ElementTree模块可以完成这样的任务。从本质上来说，开始时可以按照通常的方式来解析文档。
+    采用ElementTree来读取XML文档，并对文档的结构做出修改
+        from xml.etree.ElementTree import parse,Element
+        doc=parse('pred.xml')
+        root=doc.getroot()
+        root.remove(root.find('sri'))
+        root.remove(root.find('cr'))
+        root.getchildren().index(root.find('nm'))
+        e=Element('spam')
+        e.text='This is a test'
+        root.insert(2,e)
+        doc.write('newpred.xml',xml_declaration=True)
+    这些操作的结果产生了一个新的XML文档
+    修改XML文档的结构是简单直接的，但是必须记住所有的修改主要是对父元素继续宁的，我们把它当作是一个列表一样对待。比如说，如果移除某个元素，那么就利用它的直接父结点的remove()方法来完成。如果插入或添加新的元素，同样要使用父结点的insert()和append()方法来完成。这些元素也可以使用索引和切片操作来进行操控，比如element[i]或者是element[i:j]
+    如果需要创建新的元素，可以使用Element类来完成
+
+### 6.7 用命名空间来解析XML文档
+
+    如果解析一个使用了命名空间的XML文档，并尝试执行普通的查询操作，所有的步骤都会变得特别冗长啰嗦
+        doc.findtext('author')
+        doc.find('content')
+        doc.find('content/html') #包含命名空间的查询(无效)
+        doc.find('content/{http://www.w3.org/1999.xhtml}html')
+        doc.findtext('content/{http://www.w3.org/1999.xhtml}html/head/title') #无效
+        doc.findtext('content/{http://www.w3.org/1999.xhtml}html/{http://www.w3.org/1999.xhtml}head/{http://www.w3.org/1999.xhtml}title')
+    通常可以将命名空间的处理包装到一个通用的类中，这样可以省去一些麻烦
+
+    ```python
+    class XMLNamespaces:
+        def __init__(self,**kwargs):
+            self.namespeces={}
+            for name,uri in kwargs.items():
+                self.register(name,uri)
+        def register(self,name,uri):
+            self.namespeces[name]='{'+uri+'}'
+        def __call__(self,path):
+            return path.format_map(self.namespeces)
+    ```
+    要使用这个类，可以按照如下方式进行
+        ns=XMLNamespaces(html='http://www.w3.org/1999/xhtml')
+        doc.find(ns('content/{html}html'))
+        doc.findtext(ns('content/{html}html/{html}head/{html}title'))
+    对包含有命名空间的XML文档进行解析会非常繁琐。XMLNamespaces类的功能只是用来稍微简化一下这个过程，它允许在后序的操作中使用缩短的命名空间名称，而不必去使用完全限定的URI
+    在基本的ElementTree解析器中不存在什么机制能获得有关命名空间
